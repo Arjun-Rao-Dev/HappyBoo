@@ -1,0 +1,19 @@
+# Godot 4 generated data
+.godot/
+
+# Imported assets metadata generated locally
+.import/
+*.import
+
+# Export/build artifacts
+/export/
+/build/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.tmp
+
+# Logs
+*.log

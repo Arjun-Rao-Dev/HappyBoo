@@ -1,0 +1,90 @@
+[gd_scene format=3 uid="uid://c1sx7bic4uhdj"]
+
+[ext_resource type="PackedScene" uid="uid://pbmyh1qru7p" path="res://characters/happy_boo/happy_boo.tscn" id="1_4flbx"]
+[ext_resource type="Script" uid="uid://yh2ao5or56lq" path="res://player.gd" id="1_onrkg"]
+[ext_resource type="PackedScene" path="res://pistol/gun.tscn" id="3_4ghd5"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_onrkg"]
+radius = 50.01
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_health_bg"]
+bg_color = Color(0.73, 0.78, 0.73, 0.85)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_health_fill"]
+bg_color = Color(0.55, 0.85, 0.33, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_hurtbox"]
+radius = 80.0
+
+[node name="Player" type="CharacterBody2D" unique_id=464756056]
+script = ExtResource("1_onrkg")
+
+[node name="HappyBoo" parent="." unique_id=1091727253 instance=ExtResource("1_4flbx")]
+unique_name_in_owner = true
+scale = Vector2(0.92, 0.92)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=579793531]
+position = Vector2(-3, -58)
+shape = SubResource("CircleShape2D_onrkg")
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=1242853176]
+position = Vector2(0, -80)
+position_smoothing_enabled = true
+position_smoothing_speed = 8.0
+
+[node name="Gun" parent="." unique_id=1009510985 instance=ExtResource("3_4ghd5")]
+position = Vector2(0, 16)
+
+[node name="HealthBar" type="ProgressBar" parent="." unique_id=622794110]
+offset_left = -90.0
+offset_top = -118.0
+offset_right = 90.0
+offset_bottom = -91.0
+theme_override_styles/background = SubResource("StyleBoxFlat_health_bg")
+theme_override_styles/fill = SubResource("StyleBoxFlat_health_fill")
+value = 100.0
+show_percentage = false
+
+[node name="UsernameBackdrop" type="ColorRect" parent="." unique_id=82551013]
+offset_left = -128.0
+offset_top = -150.0
+offset_right = 128.0
+offset_bottom = -118.0
+mouse_filter = 2
+color = Color(0, 0, 0, 0.5)
+
+[node name="UsernameLabel" type="Label" parent="." unique_id=175607911]
+offset_left = -120.0
+offset_top = -145.0
+offset_right = 120.0
+offset_bottom = -123.0
+theme_override_colors/font_color = Color(1, 0.95, 0.55, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 20
+text = "Player"
+horizontal_alignment = 1
+
+[node name="Hurtbox" type="Area2D" parent="." unique_id=1467510073]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Hurtbox" unique_id=1375138257]
+shape = SubResource("CircleShape2D_hurtbox")
+
+[node name="DamageTimer" type="Timer" parent="." unique_id=609626041]
+wait_time = 0.35
+autostart = true
+
+[node name="BombCooldownTimer" type="Timer" parent="." unique_id=2021482193]
+one_shot = true
+
+[connection signal="body_entered" from="Hurtbox" to="." method="_on_hurtbox_body_entered"]
+[connection signal="body_exited" from="Hurtbox" to="." method="_on_hurtbox_body_exited"]
+[connection signal="timeout" from="DamageTimer" to="." method="_on_damage_timer_timeout"]

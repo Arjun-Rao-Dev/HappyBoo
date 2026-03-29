@@ -1,0 +1,66 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://ui/pause_menu.gd" id="1_t6ve3"]
+[ext_resource type="PackedScene" path="res://ui/options_panel.tscn" id="2_fuajh"]
+
+[node name="PauseMenu" type="CanvasLayer"]
+script = ExtResource("1_t6ve3")
+
+[node name="Backdrop" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 1
+color = Color(0, 0, 0, 0.48)
+
+[node name="Center" type="CenterContainer" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="PausePanel" type="PanelContainer" parent="Center" unique_name_in_owner=true]
+layout_mode = 2
+custom_minimum_size = Vector2(420, 320)
+
+[node name="Margin" type="MarginContainer" parent="Center/PausePanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 20
+
+[node name="VBox" type="VBoxContainer" parent="Center/PausePanel/Margin"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 12
+alignment = 1
+
+[node name="Title" type="Label" parent="Center/PausePanel/Margin/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 34
+text = "Paused"
+horizontal_alignment = 1
+
+[node name="ResumeButton" type="Button" parent="Center/PausePanel/Margin/VBox" unique_name_in_owner=true]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+text = "Resume"
+
+[node name="SaveButton" type="Button" parent="Center/PausePanel/Margin/VBox" unique_name_in_owner=true]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+text = "Save Run"
+
+[node name="OptionsButton" type="Button" parent="Center/PausePanel/Margin/VBox" unique_name_in_owner=true]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+text = "Options"
+
+[node name="QuitButton" type="Button" parent="Center/PausePanel/Margin/VBox" unique_name_in_owner=true]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+text = "Quit to Title"
+
+[node name="OptionsPanel" parent="." unique_name_in_owner=true instance=ExtResource("2_fuajh")]
+visible = false

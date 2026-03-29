@@ -1,0 +1,22 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Texture2D" path="res://pistol/projectile.png" id="1_u5g8d"]
+[ext_resource type="Script" path="res://pistol/projectile.gd" id="2_8d1ji"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_k7gh4"]
+radius = 18.0
+
+[node name="Projectile" type="Area2D"]
+script = ExtResource("2_8d1ji")
+collision_mask = 1
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture = ExtResource("1_u5g8d")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_k7gh4")
+
+[node name="LifeTimer" type="Timer" parent="."]
+one_shot = true
+
+[connection signal="timeout" from="LifeTimer" to="." method="_on_life_timer_timeout"]

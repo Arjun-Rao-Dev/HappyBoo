@@ -1,0 +1,22 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/bomb_cooldown_ui.gd" id="1_f4g6m"]
+
+[node name="BombCooldownUI" type="Control"]
+custom_minimum_size = Vector2(84, 84)
+script = ExtResource("1_f4g6m")
+
+[node name="CenterLabel" type="Label" parent="."]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -20.0
+offset_top = -16.0
+offset_right = 20.0
+offset_bottom = 16.0
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_colors/font_color = Color(0.1, 0.1, 0.1, 1)
+theme_override_font_sizes/font_size = 24
+text = "Z"

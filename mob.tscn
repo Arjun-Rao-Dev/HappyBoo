@@ -1,0 +1,10 @@
+[gd_scene format=3 uid="uid://y38gte5o0xf8"]
+
+[ext_resource type="Script" uid="uid://d07l5xwryn2cx" path="res://mob.gd" id="1_nokgg"]
+[ext_resource type="PackedScene" uid="uid://d1dvx2tras4t4" path="res://slime.tscn" id="1_ubaqv"]
+
+[node name="Mob" unique_id=1845909807 instance=ExtResource("1_ubaqv")]
+script = ExtResource("1_nokgg")
+
+[node name="CollisionShape2D" parent="." index="1" unique_id=1364172817]
+position = Vector2(1, -40)

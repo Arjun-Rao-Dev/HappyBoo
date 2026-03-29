@@ -1,0 +1,11 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://ui/menu_cursor.gd" id="1_0rv58"]
+[ext_resource type="Texture2D" path="res://ui/assets/menu_pointer.png" id="2_g0lq4"]
+
+[node name="MenuCursor" type="CanvasLayer"]
+script = ExtResource("1_0rv58")
+
+[node name="Pointer" type="TextureRect" parent="."]
+texture = ExtResource("2_g0lq4")
+texture_filter = 0

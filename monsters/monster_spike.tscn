@@ -1,0 +1,19 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://monsters/monster_variant.gd" id="1_w8c3m"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_7r2s9"]
+radius = 44.0
+
+[node name="MonsterSpike" type="CharacterBody2D"]
+script = ExtResource("1_w8c3m")
+move_speed = 290.0
+max_health = 6.0
+contact_damage = 34.0
+sprite_path = "res://monsters/assets/slime_spike_rest.png"
+sprite_scale = 2.0
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_7r2s9")

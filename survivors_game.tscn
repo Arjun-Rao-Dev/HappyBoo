@@ -1,0 +1,153 @@
+[gd_scene format=3 uid="uid://swcb8q32cvqi"]
+
+[ext_resource type="PackedScene" uid="uid://c1sx7bic4uhdj" path="res://player.tscn" id="1_3cish"]
+[ext_resource type="PackedScene" uid="uid://dq3r015sr1uql" path="res://pine_tree.tscn" id="2_y3pti"]
+[ext_resource type="PackedScene" uid="uid://d1dvx2tras4t4" path="res://slime.tscn" id="3_l26od"]
+[ext_resource type="Script" uid="uid://duhufom6gminl" path="res://survivors_game.gd" id="4_d4u1n"]
+[ext_resource type="PackedScene" path="res://ui/bomb_cooldown_ui.tscn" id="5_0lq2p"]
+[ext_resource type="PackedScene" path="res://ui/pause_menu.tscn" id="6_ky5ah"]
+[ext_resource type="PackedScene" path="res://ui/crosshair.tscn" id="7_lvy0n"]
+[ext_resource type="AudioStream" path="res://music/in_game_music.mp3" id="8_h4d9a"]
+
+[node name="Game" type="Node2D" unique_id=1115577214]
+y_sort_enabled = true
+script = ExtResource("4_d4u1n")
+
+[node name="ColorRect" type="ColorRect" parent="." unique_id=633500168]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+[node name="Player" parent="." unique_id=464756056 instance=ExtResource("1_3cish")]
+position = Vector2(922, 499)
+
+[node name="PineTree" parent="." unique_id=596937654 instance=ExtResource("2_y3pti")]
+position = Vector2(509, 702)
+
+[node name="PineTree2" parent="." unique_id=407737968 instance=ExtResource("2_y3pti")]
+position = Vector2(537, 178)
+
+[node name="PineTree3" parent="." unique_id=736383971 instance=ExtResource("2_y3pti")]
+position = Vector2(1268, 186)
+
+[node name="PineTree4" parent="." unique_id=794244723 instance=ExtResource("2_y3pti")]
+position = Vector2(1764, 332)
+
+[node name="PineTree5" parent="." unique_id=1706550085 instance=ExtResource("2_y3pti")]
+position = Vector2(1345, 426)
+
+[node name="PineTree6" parent="." unique_id=1030608141 instance=ExtResource("2_y3pti")]
+position = Vector2(1571, 684)
+
+[node name="PineTree7" parent="." unique_id=1376561028 instance=ExtResource("2_y3pti")]
+position = Vector2(982, 744)
+
+[node name="CharacterBody2D" parent="." unique_id=1845909807 instance=ExtResource("3_l26od")]
+position = Vector2(617, 318)
+
+[node name="CharacterBody2D2" parent="." unique_id=701815512 instance=ExtResource("3_l26od")]
+position = Vector2(388, 483)
+
+[node name="CharacterBody2D3" parent="." unique_id=7112556 instance=ExtResource("3_l26od")]
+position = Vector2(1107, 145)
+
+[node name="CharacterBody2D4" parent="." unique_id=883693896 instance=ExtResource("3_l26od")]
+position = Vector2(1530, 408)
+
+[node name="CharacterBody2D5" parent="." unique_id=1619202993 instance=ExtResource("3_l26od")]
+position = Vector2(1337, 752)
+
+[node name="HUD" type="CanvasLayer" parent="." unique_id=849364022]
+
+[node name="TopLeftPanel" type="PanelContainer" parent="HUD" unique_id=182336110]
+offset_left = 20.0
+offset_top = 18.0
+offset_right = 352.0
+offset_bottom = 238.0
+
+[node name="Margin" type="MarginContainer" parent="HUD/TopLeftPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 14
+
+[node name="VBox" type="VBoxContainer" parent="HUD/TopLeftPanel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="HealthLabel" type="Label" parent="HUD/TopLeftPanel/Margin/VBox" unique_name_in_owner=true]
+layout_mode = 2
+text = "Health"
+
+[node name="HealthBar" type="ProgressBar" parent="HUD/TopLeftPanel/Margin/VBox" unique_name_in_owner=true]
+layout_mode = 2
+max_value = 100.0
+value = 100.0
+show_percentage = false
+
+[node name="ScoreLabel" type="Label" parent="HUD/TopLeftPanel/Margin/VBox" unique_name_in_owner=true]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Score: 0"
+
+[node name="BombRow" type="HBoxContainer" parent="HUD/TopLeftPanel/Margin/VBox"]
+layout_mode = 2
+
+[node name="BombCooldownUI" parent="HUD/TopLeftPanel/Margin/VBox/BombRow" unique_name_in_owner=true instance=ExtResource("5_0lq2p")]
+layout_mode = 2
+
+[node name="BombLabel" type="Label" parent="HUD/TopLeftPanel/Margin/VBox/BombRow"]
+layout_mode = 2
+text = "Bomb"
+
+[node name="ControlsHintLabel" type="Label" parent="HUD/TopLeftPanel/Margin/VBox" unique_name_in_owner=true]
+layout_mode = 2
+autowrap_mode = 3
+text = "Bomb: Z | Pause: Esc"
+
+[node name="PauseMenu" parent="." unique_name_in_owner=true instance=ExtResource("6_ky5ah")]
+
+[node name="Crosshair" parent="." unique_name_in_owner=true instance=ExtResource("7_lvy0n")]
+
+[node name="GameMusic" type="AudioStreamPlayer" parent="." unique_name_in_owner=true]
+stream = ExtResource("8_h4d9a")
+volume_db = -6.0
+autoplay = true
+bus = &"Music"
+
+[node name="GameOverUI" type="CanvasLayer" parent="." unique_id=390352523]
+visible = false
+
+[node name="GameOverPanel" type="ColorRect" parent="GameOverUI" unique_id=738389406]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 1
+color = Color(0, 0, 0, 0.55)
+
+[node name="CenterBox" type="CenterContainer" parent="GameOverUI/GameOverPanel" unique_id=919423288]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="GameOverUI/GameOverPanel/CenterBox" unique_id=154087699]
+layout_mode = 2
+alignment = 1
+
+[node name="GameOverLabel" type="Label" parent="GameOverUI/GameOverPanel/CenterBox/VBoxContainer" unique_id=249474112]
+layout_mode = 2
+theme_override_font_sizes/font_size = 54
+text = "GAME OVER"
+horizontal_alignment = 1
+
+[node name="RestartButton" type="Button" parent="GameOverUI/GameOverPanel/CenterBox/VBoxContainer" unique_id=1593812913]
+custom_minimum_size = Vector2(220, 56)
+layout_mode = 2
+text = "New Run"
+
+[node name="QuitToTitleButton" type="Button" parent="GameOverUI/GameOverPanel/CenterBox/VBoxContainer" unique_id=92011300]
+custom_minimum_size = Vector2(220, 56)
+layout_mode = 2
+text = "Quit to Title"
