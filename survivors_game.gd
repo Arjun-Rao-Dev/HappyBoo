@@ -20,12 +20,22 @@ extends Node2D
 @export var spawn_attempts_per_food: int = 8
 @export var score_for_medium_monsters: int = 12
 @export var score_for_heavy_monsters: int = 35
+@export var network_snapshot_interval: float = 0.10
 
 var spawned_chunks: Dictionary = {}
 var score: int = 0
 var run_start_time_ms: int = 0
+var is_multiplayer_session := false
+var is_host_session := false
+var session_mode := "single"
+var remote_players: Dictionary = {}
+var remote_inputs: Dictionary = {}
+var remote_mobs: Dictionary = {}
+var remote_foods: Dictionary = {}
+var snapshot_elapsed := 0.0
 
 @onready var player = $Player
+@onready var player_scene: PackedScene = preload("res://player.tscn")
 @onready var game_over_ui: CanvasLayer = $GameOverUI
 @onready var restart_button: Button = $GameOverUI/GameOverPanel/CenterBox/VBoxContainer/RestartButton
 @onready var quit_to_title_button: Button = $GameOverUI/GameOverPanel/CenterBox/VBoxContainer/QuitToTitleButton
@@ -42,6 +52,7 @@ var hud_health_fill_style: StyleBoxFlat
 func _ready() -> void:
 	randomize()
 	SettingsManager.load_settings()
+	_configure_session_state()
 	Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
 	game_over_ui.visible = false
 	game_over_ui.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
@@ -67,24 +78,267 @@ func _ready() -> void:
 	pause_menu.resume_requested.connect(_on_pause_resume_requested)
 	pause_menu.save_requested.connect(_on_pause_save_requested)
 	pause_menu.quit_to_title_requested.connect(_on_quit_to_title_pressed)
+	pause_menu.set_save_enabled(not is_multiplayer_session)
 
 	run_start_time_ms = Time.get_ticks_msec()
-	_apply_continue_state_if_present()
+	if not is_multiplayer_session:
+		_apply_continue_state_if_present()
+	else:
+		SaveManager.clear_pending_continue_run()
+		_setup_multiplayer_match()
 	_update_score_label()
 	_on_player_health_changed(player.get_current_health(), player.get_max_health())
 	_update_controls_hint_label()
+	if session_mode == "pvp":
+		_cleanup_pvp_mode_entities()
 	_spawn_trees_around_player()
+
+
+func _configure_session_state() -> void:
+	is_multiplayer_session = MultiplayerSession != null and MultiplayerSession.is_multiplayer
+	is_host_session = not is_multiplayer_session or MultiplayerSession.is_host
+	session_mode = "single"
+	if is_multiplayer_session:
+		session_mode = MultiplayerSession.mode
+
+
+func _setup_multiplayer_match() -> void:
+	if not is_multiplayer_session:
+		return
+	if player.has_method("set_display_name"):
+		player.set_display_name(_username_for_peer(MultiplayerSession.local_peer_id))
+	if not is_host_session:
+		player.set_actions_enabled(false)
+
+	if not MultiplayerSession.relay_input_received.is_connected(_on_network_input_received):
+		MultiplayerSession.relay_input_received.connect(_on_network_input_received)
+	if not MultiplayerSession.relay_snapshot_received.is_connected(_on_network_snapshot_received):
+		MultiplayerSession.relay_snapshot_received.connect(_on_network_snapshot_received)
+	if not MultiplayerSession.relay_event_received.is_connected(_on_network_event_received):
+		MultiplayerSession.relay_event_received.connect(_on_network_event_received)
+	if not MultiplayerSession.roster_updated.is_connected(_on_session_roster_updated):
+		MultiplayerSession.roster_updated.connect(_on_session_roster_updated)
+	if not MultiplayerSession.host_disconnected.is_connected(_on_session_host_disconnected):
+		MultiplayerSession.host_disconnected.connect(_on_session_host_disconnected)
+
+	_sync_remote_players_from_roster()
+
+
+func _process_multiplayer(delta: float) -> void:
+	if not is_multiplayer_session:
+		return
+	if is_host_session:
+		for peer_id in remote_players.keys():
+			var remote_player: Node = remote_players[peer_id]
+			if remote_player and is_instance_valid(remote_player):
+				remote_player.set_external_input_vector(remote_inputs.get(peer_id, Vector2.ZERO))
+		snapshot_elapsed += delta
+		if snapshot_elapsed >= network_snapshot_interval:
+			snapshot_elapsed = 0.0
+			MultiplayerSession.send_host_snapshot(_build_host_snapshot())
+		_check_pvp_winner()
+	else:
+		var input_vec := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+		MultiplayerSession.send_input(input_vec)
+
+
+func _on_network_input_received(peer_id: int, input_vector: Vector2) -> void:
+	if not is_host_session:
+		return
+	remote_inputs[peer_id] = input_vector
+
+
+func _on_network_snapshot_received(snapshot: Dictionary) -> void:
+	if is_host_session:
+		return
+	_apply_host_snapshot(snapshot)
+
+
+func _on_network_event_received(event_data: Dictionary) -> void:
+	var event_type := String(event_data.get("type", ""))
+	if event_type == "match_end":
+		var message := String(event_data.get("message", "Match ended."))
+		_show_multiplayer_end_and_return(message)
+
+
+func _on_session_roster_updated(_players: Dictionary) -> void:
+	_sync_remote_players_from_roster()
+
+
+func _on_session_host_disconnected(reason: String) -> void:
+	_show_multiplayer_end_and_return(reason)
+
+
+func _sync_remote_players_from_roster() -> void:
+	if not is_multiplayer_session:
+		return
+	var roster := MultiplayerSession.players
+	for peer_id in roster.keys():
+		if peer_id == MultiplayerSession.local_peer_id:
+			continue
+		if remote_players.has(peer_id):
+			continue
+		var remote := player_scene.instantiate()
+		remote.set_use_external_input(true)
+		remote.set_actions_enabled(is_host_session)
+		remote.set_display_name(_username_for_peer(peer_id))
+		if not is_host_session:
+			remote.set_physics_process(false)
+			remote.set_process(false)
+		add_child(remote)
+		remote.global_position = player.global_position + Vector2(randf_range(-120.0, 120.0), randf_range(-120.0, 120.0))
+		remote_players[peer_id] = remote
+
+	var to_remove: Array = []
+	for peer_id in remote_players.keys():
+		if roster.has(peer_id):
+			continue
+		to_remove.append(peer_id)
+	for peer_id in to_remove:
+		var node := remote_players[peer_id]
+		if node and is_instance_valid(node):
+			node.queue_free()
+		remote_players.erase(peer_id)
+		remote_inputs.erase(peer_id)
+
+
+func _build_host_snapshot() -> Dictionary:
+	var players_snapshot: Dictionary = {}
+	players_snapshot[String(MultiplayerSession.local_peer_id)] = _player_state(player)
+	for peer_id in remote_players.keys():
+		var node := remote_players[peer_id]
+		if node and is_instance_valid(node):
+			players_snapshot[String(peer_id)] = _player_state(node)
+
+	var mobs_snapshot: Array = []
+	var foods_snapshot: Array = []
+	if session_mode == "team":
+		for mob in get_tree().get_nodes_in_group("mobs"):
+			if mob is Node2D:
+				mobs_snapshot.append({
+					"id": int(mob.get_instance_id()),
+					"x": (mob as Node2D).global_position.x,
+					"y": (mob as Node2D).global_position.y
+				})
+		for node in get_children():
+			if node is Area2D and String(node.get_script()).contains("food_pickup.gd"):
+				var food := node as Area2D
+				foods_snapshot.append({
+					"id": int(food.get_instance_id()),
+					"x": food.global_position.x,
+					"y": food.global_position.y
+				})
+
+	return {
+		"mode": session_mode,
+		"score": score,
+		"players": players_snapshot,
+		"mobs": mobs_snapshot,
+		"foods": foods_snapshot
+	}
+
+
+func _apply_host_snapshot(snapshot: Dictionary) -> void:
+	score = int(snapshot.get("score", score))
+	_update_score_label()
+
+	var players_snapshot: Dictionary = snapshot.get("players", {})
+	for key in players_snapshot.keys():
+		var peer_id := int(String(key))
+		var state: Dictionary = players_snapshot[key]
+		var target_player = player if peer_id == MultiplayerSession.local_peer_id else remote_players.get(peer_id, null)
+		if target_player == null:
+			continue
+		target_player.global_position = Vector2(float(state.get("x", target_player.global_position.x)), float(state.get("y", target_player.global_position.y)))
+		if target_player.has_method("restore_from_run_state"):
+			target_player.restore_from_run_state(float(state.get("health", 100.0)), float(state.get("max_health", 100.0)))
+
+
+func _player_state(player_node: Node) -> Dictionary:
+	if not (player_node is Node2D):
+		return {}
+	return {
+		"x": (player_node as Node2D).global_position.x,
+		"y": (player_node as Node2D).global_position.y,
+		"health": float(player_node.get_current_health()),
+		"max_health": float(player_node.get_max_health()),
+		"dead": bool(player_node.is_dead_state())
+	}
+
+
+func _username_for_peer(peer_id: int) -> String:
+	var entry: Dictionary = MultiplayerSession.players.get(peer_id, {})
+	var username := String(entry.get("username", "Player"))
+	if username.strip_edges().is_empty():
+		return "Player"
+	return username
+
+
+func _show_multiplayer_end_and_return(message: String) -> void:
+	get_tree().paused = false
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	MultiplayerSession.reset_to_single_player()
+	SaveManager.clear_pending_continue_run()
+	push_warning(message)
+	get_tree().change_scene_to_file("res://ui/title_menu.tscn")
+
+
+func _check_pvp_winner() -> void:
+	if not is_multiplayer_session or not is_host_session or session_mode != "pvp":
+		return
+	var alive_names: Array[String] = []
+	var local_name := _username_for_peer(MultiplayerSession.local_peer_id)
+	if not player.is_dead_state():
+		alive_names.append(local_name)
+	for peer_id in remote_players.keys():
+		var node := remote_players[peer_id]
+		if node and is_instance_valid(node) and not node.is_dead_state():
+			alive_names.append(_username_for_peer(peer_id))
+	if alive_names.size() > 1:
+		return
+	var message := "PvP ended."
+	if alive_names.size() == 1:
+		message = "%s wins!" % alive_names[0]
+	MultiplayerSession.send_host_event({
+		"type": "match_end",
+		"message": message
+	})
+	_show_multiplayer_end_and_return(message)
+
+
+func _cleanup_pvp_mode_entities() -> void:
+	for mob in get_tree().get_nodes_in_group("mobs"):
+		if mob and is_instance_valid(mob):
+			mob.queue_free()
+	for node in get_children():
+		if node is Area2D and String(node.get_script()).contains("food_pickup.gd"):
+			node.queue_free()
 
 
 func _exit_tree() -> void:
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	if MultiplayerSession != null:
+		if MultiplayerSession.relay_input_received.is_connected(_on_network_input_received):
+			MultiplayerSession.relay_input_received.disconnect(_on_network_input_received)
+		if MultiplayerSession.relay_snapshot_received.is_connected(_on_network_snapshot_received):
+			MultiplayerSession.relay_snapshot_received.disconnect(_on_network_snapshot_received)
+		if MultiplayerSession.relay_event_received.is_connected(_on_network_event_received):
+			MultiplayerSession.relay_event_received.disconnect(_on_network_event_received)
+		if MultiplayerSession.roster_updated.is_connected(_on_session_roster_updated):
+			MultiplayerSession.roster_updated.disconnect(_on_session_roster_updated)
+		if MultiplayerSession.host_disconnected.is_connected(_on_session_host_disconnected):
+			MultiplayerSession.host_disconnected.disconnect(_on_session_host_disconnected)
 
 
 func _physics_process(_delta: float) -> void:
+	if is_multiplayer_session and not is_host_session:
+		return
 	_spawn_trees_around_player()
 
 
 func _process(_delta: float) -> void:
+	if is_multiplayer_session:
+		_process_multiplayer(_delta)
 	if player == null:
 		return
 	bomb_cooldown_ui.set_state(
@@ -157,7 +411,8 @@ func _spawn_chunk(chunk: Vector2i) -> void:
 		add_child(tree)
 		tree.global_position = spawn_position
 
-	if randf() <= mob_spawn_chance_per_chunk:
+	var allow_mobs := session_mode != "pvp"
+	if allow_mobs and randf() <= mob_spawn_chance_per_chunk:
 		var scaled_mob_count: int = mobs_per_chunk + min(int(score / 20), 4)
 		for _i in scaled_mob_count:
 			var mob_position_found := false
@@ -176,7 +431,8 @@ func _spawn_chunk(chunk: Vector2i) -> void:
 			add_child(mob)
 			mob.global_position = mob_spawn_position
 
-	if randf() <= food_spawn_chance_per_chunk:
+	var allow_food := session_mode != "pvp"
+	if allow_food and randf() <= food_spawn_chance_per_chunk:
 		for _i in foods_per_chunk:
 			var food_position_found := false
 			var food_spawn_position := Vector2.ZERO
@@ -203,6 +459,10 @@ func _world_to_chunk(world_position: Vector2) -> Vector2i:
 
 
 func _on_player_died() -> void:
+	if is_multiplayer_session:
+		if is_host_session:
+			_check_pvp_winner()
+		return
 	game_over_ui.visible = true
 	crosshair.visible = false
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
@@ -222,6 +482,9 @@ func _on_restart_button_pressed() -> void:
 func _on_quit_to_title_pressed() -> void:
 	get_tree().paused = false
 	SaveManager.clear_pending_continue_run()
+	if is_multiplayer_session:
+		MultiplayerSession.leave_room()
+		MultiplayerSession.reset_to_single_player()
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	crosshair.visible = false
 	get_tree().change_scene_to_file("res://ui/title_menu.tscn")
@@ -243,6 +506,8 @@ func _on_game_music_finished() -> void:
 
 
 func _on_pause_save_requested() -> void:
+	if is_multiplayer_session:
+		return
 	SaveManager.save_run(export_run_state())
 
 
@@ -291,6 +556,8 @@ func _update_hud_health_bar_color(current: float, maximum: float) -> void:
 
 
 func export_run_state() -> Dictionary:
+	if is_multiplayer_session:
+		return {}
 	var elapsed := float(Time.get_ticks_msec() - run_start_time_ms) / 1000.0
 	return {
 		"score": score,

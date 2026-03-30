@@ -14,6 +14,9 @@ var is_dead := false
 var overlapping_mobs: Array[Node2D] = []
 var gun_unlocked_after_headstart := false
 var spawn_time_ms: int = 0
+var _use_external_input := false
+var _external_input := Vector2.ZERO
+var _actions_enabled := true
 
 @onready var bomb_scene: PackedScene = preload("res://bombs/bomb.tscn")
 @onready var health_bar: ProgressBar = $HealthBar
@@ -24,6 +27,7 @@ var spawn_time_ms: int = 0
 @onready var health_fill_style: StyleBoxFlat = health_bar.get_theme_stylebox("fill").duplicate()
 
 func _ready() -> void:
+	add_to_group("players")
 	spawn_time_ms = Time.get_ticks_msec()
 	current_health = max_health
 	health_bar.max_value = max_health
@@ -42,10 +46,11 @@ func _physics_process(_delta: float) -> void:
 		velocity = Vector2.ZERO
 		return
 	_update_headstart_gun_state()
-	var direction = Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	var direction := _external_input if _use_external_input else Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	velocity = direction * move_speed
 	move_and_slide()
-	_try_throw_bomb()
+	if _actions_enabled:
+		_try_throw_bomb()
 	
 	if velocity.length() > 0.0:
 		$%HappyBoo.play_walk_animation()
@@ -205,6 +210,8 @@ func _update_username_label() -> void:
 
 
 func _update_headstart_gun_state() -> void:
+	if not _actions_enabled:
+		return
 	if gun_unlocked_after_headstart:
 		return
 	var elapsed_seconds := float(Time.get_ticks_msec() - spawn_time_ms) / 1000.0
@@ -213,3 +220,28 @@ func _update_headstart_gun_state() -> void:
 	gun_unlocked_after_headstart = true
 	if has_node("Gun"):
 		$Gun.set_active(true)
+
+
+func set_use_external_input(enabled: bool) -> void:
+	_use_external_input = enabled
+
+
+func set_external_input_vector(input_vector: Vector2) -> void:
+	_external_input = input_vector
+
+
+func set_actions_enabled(enabled: bool) -> void:
+	_actions_enabled = enabled
+	if has_node("Gun") and not enabled:
+		$Gun.set_active(false)
+
+
+func set_display_name(name: String) -> void:
+	var normalized := name.strip_edges()
+	if normalized.is_empty():
+		normalized = "Player"
+	username_label.text = normalized
+
+
+func is_dead_state() -> bool:
+	return is_dead

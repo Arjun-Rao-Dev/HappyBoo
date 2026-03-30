@@ -1,0 +1,128 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/multiplayer_menu.gd" id="1_2mnw1"]
+
+[node name="MultiplayerMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_2mnw1")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.06, 0.08, 0.12, 1)
+
+[node name="CenterContainer" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Panel" type="PanelContainer" parent="CenterContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(760, 560)
+
+[node name="Margin" type="MarginContainer" parent="CenterContainer/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 24
+
+[node name="VBox" type="VBoxContainer" parent="CenterContainer/Panel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="CenterContainer/Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 38
+text = "Multiplayer"
+horizontal_alignment = 1
+
+[node name="ModeRow" type="HBoxContainer" parent="CenterContainer/Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="ModeLabel" type="Label" parent="CenterContainer/Panel/Margin/VBox/ModeRow"]
+layout_mode = 2
+text = "Mode"
+
+[node name="ModeOption" type="OptionButton" parent="CenterContainer/Panel/Margin/VBox/ModeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="SignalingRow" type="HBoxContainer" parent="CenterContainer/Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="SignalingLabel" type="Label" parent="CenterContainer/Panel/Margin/VBox/SignalingRow"]
+layout_mode = 2
+text = "Signaling URL"
+
+[node name="SignalingInput" type="LineEdit" parent="CenterContainer/Panel/Margin/VBox/SignalingRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "ws://localhost:8080"
+
+[node name="RoomRow" type="HBoxContainer" parent="CenterContainer/Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="RoomCodeInput" type="LineEdit" parent="CenterContainer/Panel/Margin/VBox/RoomRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Room Code"
+
+[node name="RoomCodeLabel" type="Label" parent="CenterContainer/Panel/Margin/VBox"]
+layout_mode = 2
+text = "Room Code: -"
+
+[node name="ButtonsRow" type="HBoxContainer" parent="CenterContainer/Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="HostButton" type="Button" parent="CenterContainer/Panel/Margin/VBox/ButtonsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Host"
+
+[node name="JoinButton" type="Button" parent="CenterContainer/Panel/Margin/VBox/ButtonsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Join"
+
+[node name="StartButton" type="Button" parent="CenterContainer/Panel/Margin/VBox/ButtonsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Start Match"
+
+[node name="LeaveButton" type="Button" parent="CenterContainer/Panel/Margin/VBox/ButtonsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Leave"
+
+[node name="PlayersLabel" type="Label" parent="CenterContainer/Panel/Margin/VBox"]
+layout_mode = 2
+text = "Players"
+
+[node name="PlayersList" type="ItemList" parent="CenterContainer/Panel/Margin/VBox"]
+custom_minimum_size = Vector2(0, 180)
+layout_mode = 2
+
+[node name="StatusLabel" type="Label" parent="CenterContainer/Panel/Margin/VBox"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Create or join a room to play."
+
+[node name="BottomRow" type="HBoxContainer" parent="CenterContainer/Panel/Margin/VBox"]
+layout_mode = 2
+alignment = 2
+
+[node name="BackButton" type="Button" parent="CenterContainer/Panel/Margin/VBox/BottomRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(200, 44)
+text = "Back"

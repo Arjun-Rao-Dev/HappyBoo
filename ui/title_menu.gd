@@ -1,6 +1,7 @@
 extends Control
 
 @onready var continue_button: Button = $CenterContainer/Panel/Margin/VBox/ContinueButton
+@onready var multiplayer_button: Button = $CenterContainer/Panel/Margin/VBox/MultiplayerButton
 @onready var options_button: Button = $CenterContainer/Panel/Margin/VBox/OptionsButton
 @onready var new_run_button: Button = $CenterContainer/Panel/Margin/VBox/NewRunButton
 @onready var quit_button: Button = $CenterContainer/Panel/Margin/VBox/QuitButton
@@ -13,6 +14,7 @@ func _ready() -> void:
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	SettingsManager.load_settings()
 	continue_button.pressed.connect(_on_continue_pressed)
+	multiplayer_button.pressed.connect(_on_multiplayer_pressed)
 	options_button.pressed.connect(_on_options_pressed)
 	new_run_button.pressed.connect(_on_new_run_pressed)
 	quit_button.pressed.connect(_on_quit_pressed)
@@ -52,6 +54,12 @@ func _on_continue_pressed() -> void:
 
 func _on_options_pressed() -> void:
 	options_panel.show_panel()
+
+
+func _on_multiplayer_pressed() -> void:
+	SaveManager.clear_pending_continue_run()
+	MultiplayerSession.reset_to_single_player()
+	get_tree().change_scene_to_file("res://ui/multiplayer_menu.tscn")
 
 
 func _on_options_closed() -> void:

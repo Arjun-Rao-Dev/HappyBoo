@@ -83,6 +83,7 @@ config/icon="res://icon.png"
 
 SettingsManager="*res://autoload/settings_manager.gd"
 SaveManager="*res://autoload/save_manager.gd"
+MultiplayerSession="*res://autoload/multiplayer_session.gd"
 
 [display]
 

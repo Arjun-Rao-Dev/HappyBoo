@@ -7,13 +7,14 @@ signal quit_to_title_requested
 @onready var panel: PanelContainer = $Center/PausePanel
 @onready var options_panel = $OptionsPanel
 @onready var resume_button: Button = $Center/PausePanel/Margin/VBox/ResumeButton
+@onready var save_button: Button = $Center/PausePanel/Margin/VBox/SaveButton
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_WHEN_PAUSED
 	visible = false
 	resume_button.pressed.connect(_on_resume_pressed)
-	$Center/PausePanel/Margin/VBox/SaveButton.pressed.connect(_on_save_pressed)
+	save_button.pressed.connect(_on_save_pressed)
 	$Center/PausePanel/Margin/VBox/OptionsButton.pressed.connect(_on_options_pressed)
 	$Center/PausePanel/Margin/VBox/QuitButton.pressed.connect(_on_quit_pressed)
 	options_panel.closed.connect(_on_options_closed)
@@ -67,3 +68,8 @@ func _on_options_closed() -> void:
 
 func _on_quit_pressed() -> void:
 	emit_signal("quit_to_title_requested")
+
+
+func set_save_enabled(enabled: bool) -> void:
+	save_button.disabled = not enabled
+	save_button.visible = enabled

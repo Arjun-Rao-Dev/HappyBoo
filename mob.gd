@@ -12,7 +12,7 @@ var current_health: float = 1.0
 
 func _ready() -> void:
 	add_to_group("mobs")
-	player = get_node_or_null("/root/Game/Player")
+	player = _find_target_player()
 	spawn_time_ms = Time.get_ticks_msec()
 	current_health = max_health
 
@@ -23,8 +23,8 @@ func _physics_process(_delta: float) -> void:
 		velocity = Vector2.ZERO
 		return
 
-	if player == null:
-		player = get_node_or_null("/root/Game/Player")
+	if player == null or not is_instance_valid(player):
+		player = _find_target_player()
 	if player == null:
 		velocity = Vector2.ZERO
 		return
@@ -44,3 +44,21 @@ func take_damage(amount: float) -> bool:
 
 func get_contact_damage() -> float:
 	return contact_damage
+
+
+func _find_target_player() -> Node2D:
+	var nearest: Node2D = null
+	var nearest_distance := INF
+	for candidate in get_tree().get_nodes_in_group("players"):
+		if not (candidate is Node2D):
+			continue
+		var node := candidate as Node2D
+		if node == null or not is_instance_valid(node):
+			continue
+		if node.has_method("is_dead_state") and node.is_dead_state():
+			continue
+		var dist := global_position.distance_squared_to(node.global_position)
+		if dist < nearest_distance:
+			nearest_distance = dist
+			nearest = node
+	return nearest

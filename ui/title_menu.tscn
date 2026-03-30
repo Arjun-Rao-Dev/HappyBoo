@@ -66,6 +66,11 @@ custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
 text = "Continue"
 
+[node name="MultiplayerButton" type="Button" parent="CenterContainer/Panel/Margin/VBox" unique_name_in_owner=true]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+text = "Multiplayer"
+
 [node name="OptionsButton" type="Button" parent="CenterContainer/Panel/Margin/VBox" unique_name_in_owner=true]
 custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
