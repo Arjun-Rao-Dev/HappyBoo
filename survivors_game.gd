@@ -48,6 +48,8 @@ func _ready() -> void:
 	crosshair.visible = true
 	if game_music.stream is AudioStreamMP3:
 		(game_music.stream as AudioStreamMP3).loop = true
+	if not game_music.finished.is_connected(_on_game_music_finished):
+		game_music.finished.connect(_on_game_music_finished)
 	if not game_music.playing:
 		game_music.play()
 	var existing_fill: StyleBox = health_bar.get_theme_stylebox("fill")
@@ -230,6 +232,14 @@ func _on_pause_resume_requested() -> void:
 	get_tree().paused = false
 	crosshair.visible = true
 	game_music.stream_paused = false
+
+
+func _on_game_music_finished() -> void:
+	if game_music == null:
+		return
+	if game_music.stream_paused:
+		return
+	game_music.play()
 
 
 func _on_pause_save_requested() -> void:
