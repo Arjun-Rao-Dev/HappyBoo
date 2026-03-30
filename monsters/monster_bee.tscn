@@ -1,6 +1,7 @@
 [gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://monsters/monster_variant.gd" id="1_6l4b4"]
+[ext_resource type="Texture2D" path="res://monsters/assets/bee_rest.png" id="2_1k4y7"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_ggf7d"]
 radius = 38.0
@@ -10,7 +11,7 @@ script = ExtResource("1_6l4b4")
 move_speed = 330.0
 max_health = 3.0
 contact_damage = 20.0
-sprite_path = "res://monsters/assets/bee_rest.png"
+sprite_texture = ExtResource("2_1k4y7")
 sprite_scale = 2.1
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
