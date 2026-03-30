@@ -13,8 +13,8 @@ func _ready() -> void:
 
 
 func _load_texture_from_file(path: String) -> Texture2D:
-	var image := Image.new()
-	var err := image.load(path)
-	if err != OK:
-		return null
-	return ImageTexture.create_from_image(image)
+	# Use ResourceLoader-compatible loading so textures resolve in exported/web builds.
+	var texture := load(path)
+	if texture is Texture2D:
+		return texture
+	return null
