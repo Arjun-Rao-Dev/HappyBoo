@@ -18,6 +18,7 @@ var spawn_time_ms: int = 0
 @onready var bomb_scene: PackedScene = preload("res://bombs/bomb.tscn")
 @onready var health_bar: ProgressBar = $HealthBar
 @onready var username_label: Label = $UsernameLabel
+@onready var hurtbox: Area2D = $Hurtbox
 @onready var damage_timer: Timer = $DamageTimer
 @onready var bomb_cooldown_timer: Timer = $BombCooldownTimer
 @onready var health_fill_style: StyleBoxFlat = health_bar.get_theme_stylebox("fill").duplicate()
@@ -68,18 +69,25 @@ func _on_damage_timer_timeout() -> void:
 	var elapsed_seconds := float(Time.get_ticks_msec() - spawn_time_ms) / 1000.0
 	if elapsed_seconds < start_invulnerable_seconds:
 		return
+
+	# Query the area each tick so damage doesn't rely on potentially stale enter/exit signals.
+	var current_overlaps: Array[Node2D] = []
+	for body in hurtbox.get_overlapping_bodies():
+		if body is Node2D and body.is_in_group("mobs"):
+			current_overlaps.append(body as Node2D)
+	overlapping_mobs = current_overlaps
 	if overlapping_mobs.is_empty():
 		return
 
 	var total_damage := 0.0
-	for mob in overlapping_mobs.duplicate():
+	var tick_seconds := maxf(damage_timer.wait_time, 0.016)
+	for mob in overlapping_mobs:
 		if not is_instance_valid(mob):
-			overlapping_mobs.erase(mob)
 			continue
 		if mob.has_method("get_contact_damage"):
-			total_damage += mob.get_contact_damage()
+			total_damage += float(mob.get_contact_damage()) * tick_seconds
 		else:
-			total_damage += damage_per_tick
+			total_damage += damage_per_tick * tick_seconds
 
 	if total_damage > 0.0:
 		_apply_damage(total_damage)
