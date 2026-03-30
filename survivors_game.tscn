@@ -13,11 +13,15 @@
 y_sort_enabled = true
 script = ExtResource("4_d4u1n")
 
-[node name="ColorRect" type="ColorRect" parent="." unique_id=633500168]
+[node name="BackgroundLayer" type="CanvasLayer" parent="."]
+layer = -100
+
+[node name="ColorRect" type="ColorRect" parent="BackgroundLayer" unique_id=633500168]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
+color = Color(1, 1, 1, 1)
 
 [node name="Player" parent="." unique_id=464756056 instance=ExtResource("1_3cish")]
 position = Vector2(922, 499)
