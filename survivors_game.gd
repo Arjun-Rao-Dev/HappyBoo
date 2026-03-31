@@ -21,6 +21,8 @@ extends Node2D
 @export var score_for_medium_monsters: int = 12
 @export var score_for_heavy_monsters: int = 35
 @export var network_snapshot_interval: float = 0.10
+@export var remote_position_lerp_speed: float = 14.0
+@export var remote_rotation_lerp_speed: float = 16.0
 const TREE_ROTATION_VARIATION := 0.08
 const MULTIPLAYER_DEBUG_LOGS := false
 
@@ -36,6 +38,8 @@ var remote_input_ticks: Dictionary = {}
 var remote_mobs: Dictionary = {}
 var remote_foods: Dictionary = {}
 var remote_last_positions: Dictionary = {}
+var remote_target_positions: Dictionary = {}
+var remote_target_gun_rotations: Dictionary = {}
 var snapshot_elapsed := 0.0
 var local_input_tick: int = 0
 var local_fire_was_pressed := false
@@ -234,6 +238,8 @@ func _sync_remote_players_from_roster() -> void:
 		remote.global_position = player.global_position + Vector2(randf_range(-120.0, 120.0), randf_range(-120.0, 120.0))
 		remote_players[peer_id] = remote
 		remote_last_positions[peer_id] = remote.global_position
+		remote_target_positions[peer_id] = remote.global_position
+		remote_target_gun_rotations[peer_id] = _get_player_gun_rotation(remote)
 		if is_host_session:
 			_register_player_projectile_events(remote, peer_id)
 
@@ -250,6 +256,8 @@ func _sync_remote_players_from_roster() -> void:
 		remote_inputs.erase(peer_id)
 		remote_input_ticks.erase(peer_id)
 		remote_last_positions.erase(peer_id)
+		remote_target_positions.erase(peer_id)
+		remote_target_gun_rotations.erase(peer_id)
 
 
 func _build_host_snapshot() -> Dictionary:
@@ -316,8 +324,13 @@ func _apply_host_snapshot(snapshot: Dictionary) -> void:
 			float(state.get("x", target_player.global_position.x)),
 			float(state.get("y", target_player.global_position.y))
 		)
-		target_player.global_position = next_position
-		_set_player_gun_rotation(target_player, float(state.get("gun_rotation", _get_player_gun_rotation(target_player))))
+		var next_gun_rotation := float(state.get("gun_rotation", _get_player_gun_rotation(target_player)))
+		if peer_id == MultiplayerSession.local_peer_id or is_host_session:
+			target_player.global_position = next_position
+			_set_player_gun_rotation(target_player, next_gun_rotation)
+		else:
+			remote_target_positions[peer_id] = next_position
+			remote_target_gun_rotations[peer_id] = next_gun_rotation
 		if target_player.has_method("restore_from_run_state"):
 			target_player.restore_from_run_state(float(state.get("health", 100.0)), float(state.get("max_health", 100.0)))
 		if peer_id != MultiplayerSession.local_peer_id:
@@ -367,6 +380,23 @@ func _snapshot_player_count(snapshot: Dictionary) -> int:
 	if players_snapshot is Dictionary:
 		return (players_snapshot as Dictionary).size()
 	return 0
+
+
+func _interpolate_remote_players(delta: float) -> void:
+	var pos_alpha := clampf(delta * remote_position_lerp_speed, 0.0, 1.0)
+	var rot_alpha := clampf(delta * remote_rotation_lerp_speed, 0.0, 1.0)
+	for peer_id in remote_players.keys():
+		var remote_entry: Variant = remote_players[peer_id]
+		if not (remote_entry is Node2D):
+			continue
+		var remote_player := remote_entry as Node2D
+		var target_position: Vector2 = remote_target_positions.get(peer_id, remote_player.global_position)
+		remote_player.global_position = remote_player.global_position.lerp(target_position, pos_alpha)
+		var gun := remote_player.get_node_or_null("Gun")
+		if gun is Node2D:
+			var gun_node := gun as Node2D
+			var target_rotation := float(remote_target_gun_rotations.get(peer_id, gun_node.global_rotation))
+			gun_node.global_rotation = lerp_angle(gun_node.global_rotation, target_rotation, rot_alpha)
 
 
 func _username_for_peer(peer_id: int) -> String:
@@ -501,12 +531,14 @@ func _exit_tree() -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	if is_multiplayer_session:
+		_process_multiplayer(_delta)
+		if not is_host_session:
+			_interpolate_remote_players(_delta)
 	_spawn_trees_around_player()
 
 
 func _process(_delta: float) -> void:
-	if is_multiplayer_session:
-		_process_multiplayer(_delta)
 	if player == null:
 		return
 	bomb_cooldown_ui.set_state(
