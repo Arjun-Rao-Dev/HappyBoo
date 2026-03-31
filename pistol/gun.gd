@@ -32,8 +32,6 @@ func _process(_delta: float) -> void:
 func _on_fire_timer_timeout() -> void:
 	if not _firing_enabled:
 		return
-	if _external_control:
-		return
 	_fire_projectile()
 
 
@@ -72,7 +70,7 @@ func set_active(active: bool) -> void:
 	_is_active = active
 	set_process(active)
 	if active:
-		if _firing_enabled and not _external_control:
+		if _firing_enabled:
 			fire_timer.start()
 	else:
 		fire_timer.stop()
@@ -83,7 +81,7 @@ func set_external_control(enabled: bool) -> void:
 	if not _is_active:
 		fire_timer.stop()
 		return
-	if _external_control or not _firing_enabled:
+	if not _firing_enabled:
 		fire_timer.stop()
 	else:
 		fire_timer.start()
@@ -111,5 +109,5 @@ func set_firing_enabled(enabled: bool) -> void:
 	if not enabled:
 		fire_timer.stop()
 		return
-	if _is_active and not _external_control:
+	if _is_active:
 		fire_timer.start()

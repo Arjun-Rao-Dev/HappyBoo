@@ -42,7 +42,6 @@ var remote_target_positions: Dictionary = {}
 var remote_target_gun_rotations: Dictionary = {}
 var snapshot_elapsed := 0.0
 var local_input_tick: int = 0
-var local_fire_was_pressed := false
 
 @onready var player = $Player
 @onready var player_scene: PackedScene = preload("res://player.tscn")
@@ -150,15 +149,9 @@ func _process_multiplayer(delta: float) -> void:
 				var input_frame: Dictionary = remote_inputs.get(peer_id, {})
 				var move_input: Vector2 = input_frame.get("move", Vector2.ZERO)
 				var aim_input: Vector2 = input_frame.get("aim", remote_player.global_position + Vector2.RIGHT)
-				var fire_pressed: bool = bool(input_frame.get("fire_pressed", false))
 				remote_player.set_external_input_vector(move_input)
 				if remote_player.has_method("set_external_aim_position"):
 					remote_player.set_external_aim_position(aim_input)
-				if remote_player.has_method("set_external_fire_pressed"):
-					remote_player.set_external_fire_pressed(fire_pressed)
-				if fire_pressed:
-					input_frame["fire_pressed"] = false
-					remote_inputs[peer_id] = input_frame
 		snapshot_elapsed += delta
 		if snapshot_elapsed >= network_snapshot_interval:
 			snapshot_elapsed = 0.0
@@ -170,13 +163,9 @@ func _process_multiplayer(delta: float) -> void:
 		local_input_tick += 1
 		var input_vec := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 		var aim_world := get_global_mouse_position()
-		var fire_now := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
-		var fire_pressed_edge := fire_now and not local_fire_was_pressed
-		local_fire_was_pressed = fire_now
 		MultiplayerSession.send_input({
 			"move": input_vec,
 			"aim": aim_world,
-			"fire_pressed": fire_pressed_edge,
 			"tick": local_input_tick
 		})
 
@@ -190,7 +179,7 @@ func _on_network_input_received(peer_id: int, input_frame: Dictionary) -> void:
 		return
 	remote_input_ticks[peer_id] = tick
 	remote_inputs[peer_id] = input_frame
-	_mp_debug("input peer=%d tick=%d move=%s fire=%s" % [peer_id, tick, str(input_frame.get("move", Vector2.ZERO)), str(input_frame.get("fire_pressed", false))])
+	_mp_debug("input peer=%d tick=%d move=%s" % [peer_id, tick, str(input_frame.get("move", Vector2.ZERO))])
 
 
 func _on_network_snapshot_received(snapshot: Dictionary) -> void:
