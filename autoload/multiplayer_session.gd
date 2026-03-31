@@ -5,7 +5,7 @@ signal connection_changed(connected: bool)
 signal roster_updated(players: Dictionary)
 signal room_changed(room_code: String)
 signal match_started(mode: String)
-signal relay_input_received(peer_id: int, input_vector: Vector2)
+signal relay_input_received(peer_id: int, input_frame: Dictionary)
 signal relay_snapshot_received(snapshot: Dictionary)
 signal relay_event_received(event_data: Dictionary)
 signal host_disconnected(reason: String)
@@ -151,12 +151,12 @@ func start_match() -> void:
 	_on_match_started(mode)
 
 
-func send_input(input_vector: Vector2) -> void:
+func send_input(input_frame: Dictionary) -> void:
 	if not is_multiplayer:
 		return
 	if is_host:
 		return
-	_rpc_relay_input.rpc_id(1, input_vector)
+	_rpc_relay_input.rpc_id(1, input_frame)
 
 
 func send_host_snapshot(snapshot: Dictionary) -> void:
@@ -250,13 +250,13 @@ func _rpc_receive_roster(roster: Dictionary) -> void:
 
 
 @rpc("any_peer", "unreliable")
-func _rpc_relay_input(input_vector: Vector2) -> void:
+func _rpc_relay_input(input_frame: Dictionary) -> void:
 	if not is_host:
 		return
 	var sender := multiplayer.get_remote_sender_id()
 	if sender <= 0:
 		return
-	emit_signal("relay_input_received", sender, input_vector)
+	emit_signal("relay_input_received", sender, input_frame)
 
 
 @rpc("authority", "unreliable")

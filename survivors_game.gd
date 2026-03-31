@@ -22,6 +22,7 @@ extends Node2D
 @export var score_for_heavy_monsters: int = 35
 @export var network_snapshot_interval: float = 0.10
 const TREE_ROTATION_VARIATION := 0.08
+const MULTIPLAYER_DEBUG_LOGS := false
 
 var spawned_chunks: Dictionary = {}
 var score: int = 0
@@ -31,10 +32,13 @@ var is_host_session := false
 var session_mode := "single"
 var remote_players: Dictionary = {}
 var remote_inputs: Dictionary = {}
+var remote_input_ticks: Dictionary = {}
 var remote_mobs: Dictionary = {}
 var remote_foods: Dictionary = {}
 var remote_last_positions: Dictionary = {}
 var snapshot_elapsed := 0.0
+var local_input_tick: int = 0
+var local_fire_was_pressed := false
 
 @onready var player = $Player
 @onready var player_scene: PackedScene = preload("res://player.tscn")
@@ -112,8 +116,8 @@ func _setup_multiplayer_match() -> void:
 		return
 	if player.has_method("set_display_name"):
 		player.set_display_name(_username_for_peer(MultiplayerSession.local_peer_id))
-	if not is_host_session:
-		player.set_actions_enabled(false)
+	player.set_actions_enabled(true)
+	_set_player_gun_firing_enabled(player, is_host_session)
 
 	if not MultiplayerSession.relay_input_received.is_connected(_on_network_input_received):
 		MultiplayerSession.relay_input_received.connect(_on_network_input_received)
@@ -136,28 +140,59 @@ func _process_multiplayer(delta: float) -> void:
 		return
 	if is_host_session:
 		for peer_id in remote_players.keys():
-			var remote_player: Node = remote_players[peer_id]
-			if remote_player and is_instance_valid(remote_player):
-				remote_player.set_external_input_vector(remote_inputs.get(peer_id, Vector2.ZERO))
+			var remote_player_entry: Variant = remote_players[peer_id]
+			if remote_player_entry and is_instance_valid(remote_player_entry) and remote_player_entry is Node2D:
+				var remote_player: Node2D = remote_player_entry as Node2D
+				var input_frame: Dictionary = remote_inputs.get(peer_id, {})
+				var move_input: Vector2 = input_frame.get("move", Vector2.ZERO)
+				var aim_input: Vector2 = input_frame.get("aim", remote_player.global_position + Vector2.RIGHT)
+				var fire_pressed: bool = bool(input_frame.get("fire_pressed", false))
+				remote_player.set_external_input_vector(move_input)
+				if remote_player.has_method("set_external_aim_position"):
+					remote_player.set_external_aim_position(aim_input)
+				if remote_player.has_method("set_external_fire_pressed"):
+					remote_player.set_external_fire_pressed(fire_pressed)
+				if fire_pressed:
+					input_frame["fire_pressed"] = false
+					remote_inputs[peer_id] = input_frame
 		snapshot_elapsed += delta
 		if snapshot_elapsed >= network_snapshot_interval:
 			snapshot_elapsed = 0.0
-			MultiplayerSession.send_host_snapshot(_build_host_snapshot())
+			var snapshot := _build_host_snapshot()
+			MultiplayerSession.send_host_snapshot(snapshot)
+			_mp_debug("snapshot sent players=%d" % _snapshot_player_count(snapshot))
 		_check_pvp_winner()
 	else:
+		local_input_tick += 1
 		var input_vec := Input.get_vector("move_left", "move_right", "move_up", "move_down")
-		MultiplayerSession.send_input(input_vec)
+		var aim_world := get_global_mouse_position()
+		var fire_now := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+		var fire_pressed_edge := fire_now and not local_fire_was_pressed
+		local_fire_was_pressed = fire_now
+		MultiplayerSession.send_input({
+			"move": input_vec,
+			"aim": aim_world,
+			"fire_pressed": fire_pressed_edge,
+			"tick": local_input_tick
+		})
 
 
-func _on_network_input_received(peer_id: int, input_vector: Vector2) -> void:
+func _on_network_input_received(peer_id: int, input_frame: Dictionary) -> void:
 	if not is_host_session:
 		return
-	remote_inputs[peer_id] = input_vector
+	var tick := int(input_frame.get("tick", 0))
+	var previous_tick := int(remote_input_ticks.get(peer_id, -1))
+	if tick <= previous_tick:
+		return
+	remote_input_ticks[peer_id] = tick
+	remote_inputs[peer_id] = input_frame
+	_mp_debug("input peer=%d tick=%d move=%s fire=%s" % [peer_id, tick, str(input_frame.get("move", Vector2.ZERO)), str(input_frame.get("fire_pressed", false))])
 
 
 func _on_network_snapshot_received(snapshot: Dictionary) -> void:
 	if is_host_session:
 		return
+	_mp_debug("snapshot received players=%d" % _snapshot_player_count(snapshot))
 	_apply_host_snapshot(snapshot)
 
 
@@ -191,6 +226,7 @@ func _sync_remote_players_from_roster() -> void:
 		add_child(remote)
 		remote.set_use_external_input(true)
 		remote.set_actions_enabled(is_host_session)
+		_set_player_gun_firing_enabled(remote, is_host_session)
 		remote.set_display_name(_username_for_peer(peer_id))
 		if not is_host_session:
 			remote.set_physics_process(false)
@@ -212,6 +248,7 @@ func _sync_remote_players_from_roster() -> void:
 			node.queue_free()
 		remote_players.erase(peer_id)
 		remote_inputs.erase(peer_id)
+		remote_input_ticks.erase(peer_id)
 		remote_last_positions.erase(peer_id)
 
 
@@ -267,6 +304,12 @@ func _apply_host_snapshot(snapshot: Dictionary) -> void:
 			if remote_entry is Node2D:
 				target_player = remote_entry as Node2D
 		if target_player == null:
+			if peer_id != MultiplayerSession.local_peer_id:
+				_sync_remote_players_from_roster()
+				var retry_entry: Variant = remote_players.get(peer_id, null)
+				if retry_entry is Node2D:
+					target_player = retry_entry as Node2D
+		if target_player == null:
 			continue
 		var previous_position: Vector2 = target_player.global_position
 		var next_position: Vector2 = Vector2(
@@ -274,6 +317,7 @@ func _apply_host_snapshot(snapshot: Dictionary) -> void:
 			float(state.get("y", target_player.global_position.y))
 		)
 		target_player.global_position = next_position
+		_set_player_gun_rotation(target_player, float(state.get("gun_rotation", _get_player_gun_rotation(target_player))))
 		if target_player.has_method("restore_from_run_state"):
 			target_player.restore_from_run_state(float(state.get("health", 100.0)), float(state.get("max_health", 100.0)))
 		if peer_id != MultiplayerSession.local_peer_id:
@@ -283,13 +327,46 @@ func _apply_host_snapshot(snapshot: Dictionary) -> void:
 func _player_state(player_node: Node) -> Dictionary:
 	if not (player_node is Node2D):
 		return {}
+	var node2d := player_node as Node2D
 	return {
-		"x": (player_node as Node2D).global_position.x,
-		"y": (player_node as Node2D).global_position.y,
+		"x": node2d.global_position.x,
+		"y": node2d.global_position.y,
 		"health": float(player_node.get_current_health()),
 		"max_health": float(player_node.get_max_health()),
-		"dead": bool(player_node.is_dead_state())
+		"dead": bool(player_node.is_dead_state()),
+		"gun_rotation": _get_player_gun_rotation(player_node)
 	}
+
+
+func _get_player_gun_rotation(player_node: Node) -> float:
+	var gun := player_node.get_node_or_null("Gun")
+	if gun is Node2D:
+		return (gun as Node2D).global_rotation
+	return 0.0
+
+
+func _set_player_gun_rotation(player_node: Node, rotation_radians: float) -> void:
+	var gun := player_node.get_node_or_null("Gun")
+	if gun is Node2D:
+		(gun as Node2D).global_rotation = rotation_radians
+
+
+func _set_player_gun_firing_enabled(player_node: Node, enabled: bool) -> void:
+	var gun := player_node.get_node_or_null("Gun")
+	if gun and gun.has_method("set_firing_enabled"):
+		gun.set_firing_enabled(enabled)
+
+
+func _mp_debug(message: String) -> void:
+	if MULTIPLAYER_DEBUG_LOGS:
+		print("[MP] %s" % message)
+
+
+func _snapshot_player_count(snapshot: Dictionary) -> int:
+	var players_snapshot: Variant = snapshot.get("players", {})
+	if players_snapshot is Dictionary:
+		return (players_snapshot as Dictionary).size()
+	return 0
 
 
 func _username_for_peer(peer_id: int) -> String:

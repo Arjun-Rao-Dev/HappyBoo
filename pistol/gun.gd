@@ -11,6 +11,9 @@ signal projectile_fired(projectile_position: Vector2, projectile_rotation: float
 @onready var detection_area: Area2D = $DetectionArea
 
 var detected_mobs: Array[Node2D] = []
+var _is_active := true
+var _external_control := false
+var _firing_enabled := true
 
 
 func _ready() -> void:
@@ -21,10 +24,16 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	if _external_control:
+		return
 	look_at(get_global_mouse_position())
 
 
 func _on_fire_timer_timeout() -> void:
+	if not _firing_enabled:
+		return
+	if _external_control:
+		return
 	_fire_projectile()
 
 
@@ -60,8 +69,47 @@ func _on_detection_area_body_exited(body: Node) -> void:
 
 
 func set_active(active: bool) -> void:
+	_is_active = active
 	set_process(active)
 	if active:
-		fire_timer.start()
+		if _firing_enabled and not _external_control:
+			fire_timer.start()
 	else:
 		fire_timer.stop()
+
+
+func set_external_control(enabled: bool) -> void:
+	_external_control = enabled
+	if not _is_active:
+		fire_timer.stop()
+		return
+	if _external_control or not _firing_enabled:
+		fire_timer.stop()
+	else:
+		fire_timer.start()
+
+
+func set_external_aim_position(world_position: Vector2) -> void:
+	if not _is_active:
+		return
+	look_at(world_position)
+
+
+func set_external_fire_pressed(fire_pressed: bool) -> void:
+	if not _is_active:
+		return
+	if not _firing_enabled:
+		return
+	if not _external_control:
+		return
+	if fire_pressed:
+		_fire_projectile()
+
+
+func set_firing_enabled(enabled: bool) -> void:
+	_firing_enabled = enabled
+	if not enabled:
+		fire_timer.stop()
+		return
+	if _is_active and not _external_control:
+		fire_timer.start()

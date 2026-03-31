@@ -16,6 +16,8 @@ var gun_unlocked_after_headstart := false
 var spawn_time_ms: int = 0
 var _use_external_input := false
 var _external_input := Vector2.ZERO
+var _external_aim_position := Vector2.ZERO
+var _external_fire_pressed := false
 var _actions_enabled := true
 
 @onready var bomb_scene: PackedScene = preload("res://bombs/bomb.tscn")
@@ -49,6 +51,14 @@ func _physics_process(_delta: float) -> void:
 	var direction := _external_input if _use_external_input else Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	velocity = direction * move_speed
 	move_and_slide()
+	if _use_external_input:
+		var gun_node := get_node_or_null("Gun")
+		if gun_node:
+			if gun_node.has_method("set_external_aim_position"):
+				gun_node.set_external_aim_position(_external_aim_position)
+			if gun_node.has_method("set_external_fire_pressed"):
+				gun_node.set_external_fire_pressed(_external_fire_pressed)
+		_external_fire_pressed = false
 	if _actions_enabled:
 		_try_throw_bomb()
 	
@@ -224,10 +234,21 @@ func _update_headstart_gun_state() -> void:
 
 func set_use_external_input(enabled: bool) -> void:
 	_use_external_input = enabled
+	var gun_node := get_node_or_null("Gun")
+	if gun_node and gun_node.has_method("set_external_control"):
+		gun_node.set_external_control(enabled)
 
 
 func set_external_input_vector(input_vector: Vector2) -> void:
 	_external_input = input_vector
+
+
+func set_external_aim_position(aim_position: Vector2) -> void:
+	_external_aim_position = aim_position
+
+
+func set_external_fire_pressed(fire_pressed: bool) -> void:
+	_external_fire_pressed = fire_pressed
 
 
 func set_actions_enabled(enabled: bool) -> void:
