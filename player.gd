@@ -232,15 +232,18 @@ func set_external_input_vector(input_vector: Vector2) -> void:
 
 func set_actions_enabled(enabled: bool) -> void:
 	_actions_enabled = enabled
-	if has_node("Gun") and not enabled:
-		$Gun.set_active(false)
+	if not enabled and has_node("Gun"):
+		var gun_node := get_node_or_null("Gun")
+		if gun_node and gun_node.has_method("set_active"):
+			gun_node.set_active(false)
 
 
 func set_display_name(name: String) -> void:
 	var normalized := name.strip_edges()
 	if normalized.is_empty():
 		normalized = "Player"
-	username_label.text = normalized
+	if username_label != null:
+		username_label.text = normalized
 
 
 func is_dead_state() -> bool:

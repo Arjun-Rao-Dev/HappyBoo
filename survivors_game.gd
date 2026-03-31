@@ -51,6 +51,7 @@ var hud_health_fill_style: StyleBoxFlat
 
 func _ready() -> void:
 	randomize()
+	_ensure_scene_defaults()
 	SettingsManager.load_settings()
 	_configure_session_state()
 	Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
@@ -179,13 +180,13 @@ func _sync_remote_players_from_roster() -> void:
 		if remote_players.has(peer_id):
 			continue
 		var remote := player_scene.instantiate()
+		add_child(remote)
 		remote.set_use_external_input(true)
 		remote.set_actions_enabled(is_host_session)
 		remote.set_display_name(_username_for_peer(peer_id))
 		if not is_host_session:
 			remote.set_physics_process(false)
 			remote.set_process(false)
-		add_child(remote)
 		remote.global_position = player.global_position + Vector2(randf_range(-120.0, 120.0), randf_range(-120.0, 120.0))
 		remote_players[peer_id] = remote
 
@@ -390,6 +391,8 @@ func _spawn_trees_around_player() -> void:
 
 
 func _spawn_chunk(chunk: Vector2i) -> void:
+	if tree_scene == null:
+		return
 	var chunk_origin := Vector2(chunk.x * chunk_size, chunk.y * chunk_size)
 	for _i in trees_per_chunk:
 		var position_found := false
@@ -409,7 +412,7 @@ func _spawn_chunk(chunk: Vector2i) -> void:
 		tree.global_position = spawn_position
 
 	var allow_mobs := session_mode != "pvp"
-	if allow_mobs and randf() <= mob_spawn_chance_per_chunk:
+	if allow_mobs and mob_scene != null and medium_monster_scene != null and heavy_monster_scene != null and randf() <= mob_spawn_chance_per_chunk:
 		var scaled_mob_count: int = mobs_per_chunk + min(int(score / 20), 4)
 		for _i in scaled_mob_count:
 			var mob_position_found := false
@@ -428,7 +431,7 @@ func _spawn_chunk(chunk: Vector2i) -> void:
 			add_child(mob)
 			mob.global_position = mob_spawn_position
 
-	if randf() <= food_spawn_chance_per_chunk:
+	if food_scene != null and randf() <= food_spawn_chance_per_chunk:
 		for _i in foods_per_chunk:
 			var food_position_found := false
 			var food_spawn_position := Vector2.ZERO
@@ -597,3 +600,16 @@ func _pick_monster_scene_for_score() -> PackedScene:
 	if score >= score_for_medium_monsters and randf() < 0.45:
 		return medium_monster_scene
 	return mob_scene
+
+
+func _ensure_scene_defaults() -> void:
+	if tree_scene == null:
+		tree_scene = preload("res://pine_tree.tscn")
+	if mob_scene == null:
+		mob_scene = preload("res://slime.tscn")
+	if medium_monster_scene == null:
+		medium_monster_scene = preload("res://monsters/monster_bee.tscn")
+	if heavy_monster_scene == null:
+		heavy_monster_scene = preload("res://monsters/monster_spike.tscn")
+	if food_scene == null:
+		food_scene = preload("res://food/food_pickup.tscn")
