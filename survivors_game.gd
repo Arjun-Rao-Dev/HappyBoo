@@ -32,10 +32,13 @@ var remote_players: Dictionary = {}
 var remote_inputs: Dictionary = {}
 var remote_mobs: Dictionary = {}
 var remote_foods: Dictionary = {}
+var remote_last_positions: Dictionary = {}
 var snapshot_elapsed := 0.0
 
 @onready var player = $Player
 @onready var player_scene: PackedScene = preload("res://player.tscn")
+@onready var projectile_scene_mp: PackedScene = preload("res://pistol/projectile.tscn")
+@onready var muzzle_flash_scene_mp: PackedScene = preload("res://pistol/muzzle_flash/muzzle_flash.tscn")
 @onready var game_over_ui: CanvasLayer = $GameOverUI
 @onready var restart_button: Button = $GameOverUI/GameOverPanel/CenterBox/VBoxContainer/RestartButton
 @onready var quit_to_title_button: Button = $GameOverUI/GameOverPanel/CenterBox/VBoxContainer/QuitToTitleButton
@@ -121,6 +124,8 @@ func _setup_multiplayer_match() -> void:
 		MultiplayerSession.roster_updated.connect(_on_session_roster_updated)
 	if not MultiplayerSession.host_disconnected.is_connected(_on_session_host_disconnected):
 		MultiplayerSession.host_disconnected.connect(_on_session_host_disconnected)
+	if is_host_session:
+		_register_player_projectile_events(player, MultiplayerSession.local_peer_id)
 
 	_sync_remote_players_from_roster()
 
@@ -160,6 +165,8 @@ func _on_network_event_received(event_data: Dictionary) -> void:
 	if event_type == "match_end":
 		var message := String(event_data.get("message", "Match ended."))
 		_show_multiplayer_end_and_return(message)
+	elif event_type == "projectile_spawn":
+		_spawn_network_projectile_visual(event_data)
 
 
 func _on_session_roster_updated(_players: Dictionary) -> void:
@@ -189,6 +196,9 @@ func _sync_remote_players_from_roster() -> void:
 			remote.set_process(false)
 		remote.global_position = player.global_position + Vector2(randf_range(-120.0, 120.0), randf_range(-120.0, 120.0))
 		remote_players[peer_id] = remote
+		remote_last_positions[peer_id] = remote.global_position
+		if is_host_session:
+			_register_player_projectile_events(remote, peer_id)
 
 	var to_remove: Array = []
 	for peer_id in remote_players.keys():
@@ -201,6 +211,7 @@ func _sync_remote_players_from_roster() -> void:
 			node.queue_free()
 		remote_players.erase(peer_id)
 		remote_inputs.erase(peer_id)
+		remote_last_positions.erase(peer_id)
 
 
 func _build_host_snapshot() -> Dictionary:
@@ -250,9 +261,13 @@ func _apply_host_snapshot(snapshot: Dictionary) -> void:
 		var target_player = player if peer_id == MultiplayerSession.local_peer_id else remote_players.get(peer_id, null)
 		if target_player == null:
 			continue
-		target_player.global_position = Vector2(float(state.get("x", target_player.global_position.x)), float(state.get("y", target_player.global_position.y)))
+		var previous_position := target_player.global_position
+		var next_position := Vector2(float(state.get("x", target_player.global_position.x)), float(state.get("y", target_player.global_position.y)))
+		target_player.global_position = next_position
 		if target_player.has_method("restore_from_run_state"):
 			target_player.restore_from_run_state(float(state.get("health", 100.0)), float(state.get("max_health", 100.0)))
+		if peer_id != MultiplayerSession.local_peer_id:
+			_update_remote_player_animation(target_player, previous_position, next_position)
 
 
 func _player_state(player_node: Node) -> Dictionary:
@@ -282,6 +297,76 @@ func _show_multiplayer_end_and_return(message: String) -> void:
 	SaveManager.clear_pending_continue_run()
 	push_warning(message)
 	get_tree().change_scene_to_file("res://ui/title_menu.tscn")
+
+
+func _register_player_projectile_events(player_node: Node, owner_peer_id: int) -> void:
+	if player_node == null:
+		return
+	var gun := player_node.get_node_or_null("Gun")
+	if gun == null:
+		return
+	if not gun.has_signal("projectile_fired"):
+		return
+	var callback := Callable(self, "_on_player_projectile_fired").bind(owner_peer_id)
+	if gun.is_connected("projectile_fired", callback):
+		return
+	gun.connect("projectile_fired", callback)
+
+
+func _on_player_projectile_fired(projectile_position: Vector2, projectile_rotation: float, projectile_direction: Vector2, muzzle_position: Vector2, muzzle_rotation: float, owner_peer_id: int) -> void:
+	if not is_multiplayer_session or not is_host_session:
+		return
+	MultiplayerSession.send_host_event({
+		"type": "projectile_spawn",
+		"owner_peer_id": owner_peer_id,
+		"projectile": {
+			"x": projectile_position.x,
+			"y": projectile_position.y,
+			"rotation": projectile_rotation,
+			"dx": projectile_direction.x,
+			"dy": projectile_direction.y
+		},
+		"muzzle": {
+			"x": muzzle_position.x,
+			"y": muzzle_position.y,
+			"rotation": muzzle_rotation
+		}
+	})
+
+
+func _spawn_network_projectile_visual(event_data: Dictionary) -> void:
+	if projectile_scene_mp == null or muzzle_flash_scene_mp == null:
+		return
+	var projectile_payload: Dictionary = event_data.get("projectile", {})
+	var muzzle_payload: Dictionary = event_data.get("muzzle", {})
+	var projectile := projectile_scene_mp.instantiate()
+	if projectile == null:
+		return
+	projectile.network_visual_only = true
+	projectile.global_position = Vector2(float(projectile_payload.get("x", 0.0)), float(projectile_payload.get("y", 0.0)))
+	projectile.rotation = float(projectile_payload.get("rotation", 0.0))
+	projectile.direction = Vector2(float(projectile_payload.get("dx", 1.0)), float(projectile_payload.get("dy", 0.0)))
+	add_child(projectile)
+
+	var muzzle_flash := muzzle_flash_scene_mp.instantiate()
+	if muzzle_flash == null:
+		return
+	muzzle_flash.global_position = Vector2(float(muzzle_payload.get("x", projectile.global_position.x)), float(muzzle_payload.get("y", projectile.global_position.y)))
+	muzzle_flash.global_rotation = float(muzzle_payload.get("rotation", projectile.rotation))
+	add_child(muzzle_flash)
+
+
+func _update_remote_player_animation(player_node: Node, previous_position: Vector2, current_position: Vector2) -> void:
+	var visual := player_node.get_node_or_null("HappyBoo")
+	if visual == null:
+		return
+	var distance := current_position.distance_to(previous_position)
+	if distance > 0.5:
+		if visual.has_method("play_walk_animation"):
+			visual.play_walk_animation()
+	else:
+		if visual.has_method("play_idle_animation"):
+			visual.play_idle_animation()
 
 
 func _check_pvp_winner() -> void:

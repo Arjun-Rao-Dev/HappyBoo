@@ -4,6 +4,7 @@ extends Area2D
 @export var life_time: float = 2.0
 
 var direction: Vector2 = Vector2.RIGHT
+var network_visual_only: bool = false
 
 @onready var life_timer: Timer = $LifeTimer
 @onready var impact_scene: PackedScene = preload("res://pistol/impact/impact.tscn")
@@ -20,6 +21,8 @@ func _physics_process(delta: float) -> void:
 
 
 func _on_body_entered(body: Node) -> void:
+	if network_visual_only:
+		return
 	if not body.is_in_group("mobs"):
 		return
 	var game := get_tree().current_scene

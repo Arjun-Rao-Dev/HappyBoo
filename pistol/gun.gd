@@ -1,5 +1,7 @@
 extends Node2D
 
+signal projectile_fired(projectile_position: Vector2, projectile_rotation: float, projectile_direction: Vector2, muzzle_position: Vector2, muzzle_rotation: float)
+
 @export var fire_interval: float = 0.5
 
 @onready var projectile_scene: PackedScene = preload("res://pistol/projectile.tscn")
@@ -37,6 +39,14 @@ func _fire_projectile() -> void:
 	get_tree().current_scene.add_child(muzzle_flash)
 	muzzle_flash.global_position = muzzle.global_position
 	muzzle_flash.global_rotation = global_rotation
+	emit_signal(
+		"projectile_fired",
+		projectile.global_position,
+		projectile.rotation,
+		projectile.direction,
+		muzzle_flash.global_position,
+		muzzle_flash.global_rotation
+	)
 
 
 func _on_detection_area_body_entered(body: Node) -> void:
