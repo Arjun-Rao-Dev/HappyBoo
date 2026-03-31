@@ -310,9 +310,6 @@ func _cleanup_pvp_mode_entities() -> void:
 	for mob in get_tree().get_nodes_in_group("mobs"):
 		if mob and is_instance_valid(mob):
 			mob.queue_free()
-	for food in get_tree().get_nodes_in_group("foods"):
-		if food and is_instance_valid(food):
-			food.queue_free()
 
 
 func _exit_tree() -> void:
@@ -431,8 +428,7 @@ func _spawn_chunk(chunk: Vector2i) -> void:
 			add_child(mob)
 			mob.global_position = mob_spawn_position
 
-	var allow_food := session_mode != "pvp"
-	if allow_food and randf() <= food_spawn_chance_per_chunk:
+	if randf() <= food_spawn_chance_per_chunk:
 		for _i in foods_per_chunk:
 			var food_position_found := false
 			var food_spawn_position := Vector2.ZERO
