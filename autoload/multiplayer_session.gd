@@ -11,57 +11,34 @@ signal relay_event_received(event_data: Dictionary)
 signal host_disconnected(reason: String)
 
 const MAX_PLAYERS := 4
-const DEFAULT_SIGNALING_URL := "ws://localhost:8080"
+const DEFAULT_PORT := 7000
+const DEFAULT_HOST := "127.0.0.1"
 
 var mode: String = "single"
 var is_multiplayer: bool = false
 var is_host: bool = false
 var room_code: String = ""
-var signaling_url: String = DEFAULT_SIGNALING_URL
-var local_peer_id: int = -1
+var local_peer_id: int = 1
 var players: Dictionary = {}
 
-var _socket := WebSocketPeer.new()
-var _connected := false
+var _enet_peer: ENetMultiplayerPeer
 
 
-func _process(_delta: float) -> void:
-	if _socket.get_ready_state() == WebSocketPeer.STATE_CLOSED:
-		if _connected:
-			_connected = false
-			emit_signal("connection_changed", false)
-		if is_multiplayer and room_code != "":
-			emit_signal("status_changed", "Disconnected from signaling server.")
-		return
-
-	if _socket.get_ready_state() == WebSocketPeer.STATE_CONNECTING:
-		_socket.poll()
-		return
-
-	_socket.poll()
-	if _socket.get_ready_state() == WebSocketPeer.STATE_OPEN and not _connected:
-		_connected = true
-		emit_signal("connection_changed", true)
-		emit_signal("status_changed", "Connected to signaling server.")
-		_send({
-			"type": "hello",
-			"username": _get_local_username()
-		})
-
-	while _socket.get_available_packet_count() > 0:
-		var raw := _socket.get_packet().get_string_from_utf8()
-		var parsed: Variant = JSON.parse_string(raw)
-		if parsed is Dictionary:
-			_handle_message(parsed)
+func _ready() -> void:
+	multiplayer.peer_connected.connect(_on_peer_connected)
+	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+	multiplayer.connected_to_server.connect(_on_connected_to_server)
+	multiplayer.connection_failed.connect(_on_connection_failed)
+	multiplayer.server_disconnected.connect(_on_server_disconnected)
 
 
 func reset_to_single_player() -> void:
-	_leave_room_internal(false)
+	leave_session()
 	mode = "single"
 	is_multiplayer = false
 	is_host = false
 	room_code = ""
-	local_peer_id = -1
+	local_peer_id = 1
 	players.clear()
 	emit_signal("room_changed", room_code)
 	emit_signal("roster_updated", players)
@@ -74,151 +51,209 @@ func set_mode(new_mode: String) -> void:
 	mode = new_mode
 
 
-func connect_to_signaling(url: String) -> int:
-	signaling_url = url.strip_edges()
-	if signaling_url.is_empty():
-		signaling_url = DEFAULT_SIGNALING_URL
-	if _socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
-		return OK
-	if _socket.get_ready_state() == WebSocketPeer.STATE_CONNECTING:
-		return OK
-	var err := _socket.connect_to_url(signaling_url)
+func host_lan(port: int = DEFAULT_PORT, max_players: int = MAX_PLAYERS) -> int:
+	leave_session()
+	if OS.has_feature("web"):
+		emit_signal("status_changed", "LAN host is not supported in browser builds.")
+		return ERR_UNAVAILABLE
+
+	var normalized_port := clampi(port, 1, 65535)
+	var normalized_max := clampi(max_players, 2, MAX_PLAYERS)
+	_enet_peer = ENetMultiplayerPeer.new()
+	var err := _enet_peer.create_server(normalized_port, normalized_max)
 	if err != OK:
-		emit_signal("status_changed", "Connect failed (%d)." % err)
-	return err
+		emit_signal("status_changed", "Host failed (%d)." % err)
+		return err
 
-
-func create_room(selected_mode: String) -> void:
-	set_mode(selected_mode)
+	multiplayer.multiplayer_peer = _enet_peer
 	is_multiplayer = true
 	is_host = true
-	_send({
-		"type": "create_room",
-		"mode": mode,
-		"max_players": MAX_PLAYERS
-	})
+	local_peer_id = multiplayer.get_unique_id()
+	room_code = "LAN"
+	players = {
+		local_peer_id: {"username": _get_local_username()}
+	}
+	emit_signal("connection_changed", true)
+	emit_signal("status_changed", "Hosting LAN on port %d." % normalized_port)
+	emit_signal("room_changed", room_code)
+	emit_signal("roster_updated", players)
+	return OK
 
 
-func join_room(code: String, selected_mode: String) -> void:
-	set_mode(selected_mode)
+func join_lan(host_ip: String, port: int = DEFAULT_PORT) -> int:
+	leave_session()
+	if OS.has_feature("web"):
+		emit_signal("status_changed", "LAN join is not supported in browser builds.")
+		return ERR_UNAVAILABLE
+
+	var target_host := host_ip.strip_edges()
+	if target_host.is_empty():
+		target_host = DEFAULT_HOST
+	var normalized_port := clampi(port, 1, 65535)
+	_enet_peer = ENetMultiplayerPeer.new()
+	var err := _enet_peer.create_client(target_host, normalized_port)
+	if err != OK:
+		emit_signal("status_changed", "Join failed (%d)." % err)
+		return err
+
+	multiplayer.multiplayer_peer = _enet_peer
 	is_multiplayer = true
 	is_host = false
-	_send({
-		"type": "join_room",
-		"room_code": code.strip_edges().to_upper(),
-		"mode": mode
-	})
+	room_code = "LAN"
+	players.clear()
+	emit_signal("status_changed", "Joining %s:%d..." % [target_host, normalized_port])
+	emit_signal("room_changed", room_code)
+	return OK
 
 
-func leave_room() -> void:
-	_leave_room_internal(true)
-
-
-func start_match() -> void:
-	if not is_host:
-		return
-	_send({"type": "start_match"})
-
-
-func send_input(input_vector: Vector2) -> void:
-	if not is_multiplayer or not _connected:
-		return
-	_send({
-		"type": "relay_input",
-		"input": {
-			"x": input_vector.x,
-			"y": input_vector.y
-		}
-	})
-
-
-func send_host_snapshot(snapshot: Dictionary) -> void:
-	if not is_multiplayer or not is_host or not _connected:
-		return
-	_send({
-		"type": "relay_snapshot",
-		"snapshot": snapshot
-	})
-
-
-func send_host_event(event_data: Dictionary) -> void:
-	if not is_multiplayer or not is_host or not _connected:
-		return
-	_send({
-		"type": "relay_event",
-		"event": event_data
-	})
-
-
-func _leave_room_internal(notify_server: bool) -> void:
-	if notify_server and _socket.get_ready_state() == WebSocketPeer.STATE_OPEN and room_code != "":
-		_send({"type": "leave_room"})
+func leave_session() -> void:
+	if multiplayer.multiplayer_peer != null:
+		multiplayer.multiplayer_peer.close()
+		multiplayer.multiplayer_peer = null
+	_enet_peer = null
+	is_multiplayer = false
+	is_host = false
 	room_code = ""
 	players.clear()
-	is_host = false
+	emit_signal("connection_changed", false)
 	emit_signal("room_changed", room_code)
 	emit_signal("roster_updated", players)
 
 
-func _send(payload: Dictionary) -> void:
-	if _socket.get_ready_state() != WebSocketPeer.STATE_OPEN:
+func leave_room() -> void:
+	leave_session()
+
+
+func start_match() -> void:
+	if not is_multiplayer or not is_host:
 		return
-	_socket.send_text(JSON.stringify(payload))
+	if players.size() < 1:
+		emit_signal("status_changed", "Need at least 1 player to start.")
+		return
+	_rpc_start_match.rpc(mode)
+	_on_match_started(mode)
 
 
-func _handle_message(msg: Dictionary) -> void:
-	var message_type := String(msg.get("type", ""))
-	match message_type:
-		"welcome":
-			local_peer_id = int(msg.get("peer_id", -1))
-		"status":
-			emit_signal("status_changed", String(msg.get("message", "")))
-		"error":
-			emit_signal("status_changed", "Error: %s" % String(msg.get("message", "unknown")))
-		"room_created", "room_joined":
-			room_code = String(msg.get("room_code", ""))
-			is_multiplayer = true
-			is_host = int(msg.get("host_peer_id", -1)) == local_peer_id
-			players = _players_from_variant(msg.get("players", {}))
-			emit_signal("room_changed", room_code)
-			emit_signal("roster_updated", players)
-			emit_signal("status_changed", "Room %s ready." % room_code)
-		"roster":
-			players = _players_from_variant(msg.get("players", {}))
-			emit_signal("roster_updated", players)
-		"start_match":
-			mode = String(msg.get("mode", mode))
-			is_multiplayer = true
-			room_code = String(msg.get("room_code", room_code))
-			emit_signal("match_started", mode)
-		"relay_input":
-			var sender := int(msg.get("from", -1))
-			var input_data: Dictionary = msg.get("input", {})
-			var input_vec := Vector2(float(input_data.get("x", 0.0)), float(input_data.get("y", 0.0)))
-			emit_signal("relay_input_received", sender, input_vec)
-		"relay_snapshot":
-			var snapshot: Dictionary = msg.get("snapshot", {})
-			emit_signal("relay_snapshot_received", snapshot)
-		"relay_event":
-			var event_data: Dictionary = msg.get("event", {})
-			emit_signal("relay_event_received", event_data)
-		"host_disconnected":
-			emit_signal("host_disconnected", String(msg.get("reason", "Host disconnected.")))
-			reset_to_single_player()
+func send_input(input_vector: Vector2) -> void:
+	if not is_multiplayer:
+		return
+	if is_host:
+		return
+	_rpc_relay_input.rpc_id(1, input_vector)
 
 
-func _players_from_variant(value: Variant) -> Dictionary:
-	var result: Dictionary = {}
-	if not (value is Dictionary):
-		return result
-	for key in value.keys():
-		var peer_id := int(String(key))
-		var entry: Variant = value[key]
+func send_host_snapshot(snapshot: Dictionary) -> void:
+	if not is_multiplayer or not is_host:
+		return
+	_rpc_relay_snapshot.rpc(snapshot)
+
+
+func send_host_event(event_data: Dictionary) -> void:
+	if not is_multiplayer or not is_host:
+		return
+	_rpc_relay_event.rpc(event_data)
+
+
+func _on_peer_connected(peer_id: int) -> void:
+	if not is_multiplayer:
+		return
+	if is_host:
+		if not players.has(peer_id):
+			players[peer_id] = {"username": "Player%d" % peer_id}
+		_broadcast_roster()
+
+
+func _on_peer_disconnected(peer_id: int) -> void:
+	if not is_multiplayer:
+		return
+	players.erase(peer_id)
+	emit_signal("roster_updated", players)
+	if is_host:
+		_broadcast_roster()
+
+
+func _on_connected_to_server() -> void:
+	is_multiplayer = true
+	is_host = false
+	local_peer_id = multiplayer.get_unique_id()
+	emit_signal("connection_changed", true)
+	emit_signal("status_changed", "Connected to LAN host.")
+	_rpc_set_username.rpc_id(1, _get_local_username())
+
+
+func _on_connection_failed() -> void:
+	emit_signal("status_changed", "Could not connect to LAN host.")
+	leave_session()
+
+
+func _on_server_disconnected() -> void:
+	emit_signal("host_disconnected", "Host disconnected.")
+	leave_session()
+
+
+func _broadcast_roster() -> void:
+	_rpc_receive_roster.rpc(players)
+	emit_signal("roster_updated", players)
+
+
+func _on_match_started(start_mode: String) -> void:
+	mode = start_mode
+	is_multiplayer = true
+	emit_signal("match_started", mode)
+
+
+@rpc("authority", "reliable")
+func _rpc_start_match(start_mode: String) -> void:
+	_on_match_started(start_mode)
+
+
+@rpc("any_peer", "reliable")
+func _rpc_set_username(username: String) -> void:
+	if not is_host:
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	if sender <= 0:
+		return
+	var clean_name := username.strip_edges()
+	if clean_name.is_empty():
+		clean_name = "Player%d" % sender
+	players[sender] = {"username": clean_name}
+	_broadcast_roster()
+
+
+@rpc("authority", "reliable")
+func _rpc_receive_roster(roster: Dictionary) -> void:
+	players = {}
+	for key in roster.keys():
+		var peer_id := int(key)
+		var entry: Variant = roster[key]
 		if entry is Dictionary:
-			result[peer_id] = {
-				"username": String(entry.get("username", "Player"))
-			}
-	return result
+			players[peer_id] = {"username": String(entry.get("username", "Player"))}
+	emit_signal("roster_updated", players)
+
+
+@rpc("any_peer", "unreliable")
+func _rpc_relay_input(input_vector: Vector2) -> void:
+	if not is_host:
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	if sender <= 0:
+		return
+	emit_signal("relay_input_received", sender, input_vector)
+
+
+@rpc("authority", "unreliable")
+func _rpc_relay_snapshot(snapshot: Dictionary) -> void:
+	if is_host:
+		return
+	emit_signal("relay_snapshot_received", snapshot)
+
+
+@rpc("authority", "reliable")
+func _rpc_relay_event(event_data: Dictionary) -> void:
+	if is_host:
+		return
+	emit_signal("relay_event_received", event_data)
 
 
 func _get_local_username() -> String:
