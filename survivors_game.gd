@@ -258,11 +258,20 @@ func _apply_host_snapshot(snapshot: Dictionary) -> void:
 	for key in players_snapshot.keys():
 		var peer_id := int(String(key))
 		var state: Dictionary = players_snapshot[key]
-		var target_player = player if peer_id == MultiplayerSession.local_peer_id else remote_players.get(peer_id, null)
+		var target_player: Node2D = null
+		if peer_id == MultiplayerSession.local_peer_id:
+			target_player = player
+		else:
+			var remote_entry: Variant = remote_players.get(peer_id, null)
+			if remote_entry is Node2D:
+				target_player = remote_entry as Node2D
 		if target_player == null:
 			continue
-		var previous_position := target_player.global_position
-		var next_position := Vector2(float(state.get("x", target_player.global_position.x)), float(state.get("y", target_player.global_position.y)))
+		var previous_position: Vector2 = target_player.global_position
+		var next_position: Vector2 = Vector2(
+			float(state.get("x", target_player.global_position.x)),
+			float(state.get("y", target_player.global_position.y))
+		)
 		target_player.global_position = next_position
 		if target_player.has_method("restore_from_run_state"):
 			target_player.restore_from_run_state(float(state.get("health", 100.0)), float(state.get("max_health", 100.0)))
