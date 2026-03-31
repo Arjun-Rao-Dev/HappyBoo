@@ -137,6 +137,17 @@ func heal(amount: float) -> void:
 	emit_signal("health_changed", current_health, max_health)
 
 
+func take_projectile_damage(amount: float) -> bool:
+	if is_dead:
+		return false
+	var elapsed_seconds := float(Time.get_ticks_msec() - spawn_time_ms) / 1000.0
+	if elapsed_seconds < start_invulnerable_seconds:
+		return false
+	var was_dead := is_dead
+	_apply_damage(amount)
+	return (not was_dead) and is_dead
+
+
 func _update_health_bar_color() -> void:
 	var health_ratio := clampf(current_health / max_health, 0.0, 1.0)
 	var green := Color(0.55, 0.85, 0.33, 1.0)

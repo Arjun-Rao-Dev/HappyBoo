@@ -38,6 +38,9 @@ func _on_fire_timer_timeout() -> void:
 func _fire_projectile() -> void:
 	var projectile := projectile_scene.instantiate()
 	get_tree().current_scene.add_child(projectile)
+	var shooter := get_parent()
+	if shooter != null:
+		projectile.shooter = shooter
 	projectile.global_position = muzzle.global_position
 	projectile.rotation = global_rotation
 	projectile.direction = Vector2.RIGHT.rotated(global_rotation)
