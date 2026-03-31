@@ -21,6 +21,7 @@ extends Node2D
 @export var score_for_medium_monsters: int = 12
 @export var score_for_heavy_monsters: int = 35
 @export var network_snapshot_interval: float = 0.10
+const TREE_ROTATION_VARIATION := 0.08
 
 var spawned_chunks: Dictionary = {}
 var score: int = 0
@@ -423,8 +424,6 @@ func _exit_tree() -> void:
 
 
 func _physics_process(_delta: float) -> void:
-	if is_multiplayer_session and not is_host_session:
-		return
 	_spawn_trees_around_player()
 
 
@@ -488,15 +487,16 @@ func _spawn_chunk(chunk: Vector2i) -> void:
 	if tree_scene == null:
 		return
 	var chunk_origin := Vector2(chunk.x * chunk_size, chunk.y * chunk_size)
+	var tree_rng := _chunk_rng(chunk, "trees")
 	for _i in trees_per_chunk:
 		var position_found := false
 		var spawn_position := Vector2.ZERO
 		for _attempt in spawn_attempts_per_tree:
 			spawn_position = chunk_origin + Vector2(
-				randf_range(0.0, chunk_size),
-				randf_range(0.0, chunk_size)
+				tree_rng.randf_range(0.0, chunk_size),
+				tree_rng.randf_range(0.0, chunk_size)
 			)
-			if spawn_position.distance_to(player.global_position) >= min_tree_distance_from_player:
+			if is_multiplayer_session or spawn_position.distance_to(player.global_position) >= min_tree_distance_from_player:
 				position_found = true
 				break
 		if not position_found:
@@ -504,6 +504,14 @@ func _spawn_chunk(chunk: Vector2i) -> void:
 		var tree := tree_scene.instantiate()
 		add_child(tree)
 		tree.global_position = spawn_position
+		if tree is Node2D:
+			(tree as Node2D).rotation = tree_rng.randf_range(-TREE_ROTATION_VARIATION, TREE_ROTATION_VARIATION)
+		var tree_sprite: Variant = tree.get_node_or_null("PineTree")
+		if tree_sprite is Sprite2D:
+			(tree_sprite as Sprite2D).flip_h = tree_rng.randf() < 0.5
+
+	if is_multiplayer_session and not is_host_session:
+		return
 
 	var allow_mobs := session_mode != "pvp"
 	if allow_mobs and mob_scene != null and medium_monster_scene != null and heavy_monster_scene != null and randf() <= mob_spawn_chance_per_chunk:
@@ -549,6 +557,12 @@ func _world_to_chunk(world_position: Vector2) -> Vector2i:
 		int(floor(world_position.x / chunk_size)),
 		int(floor(world_position.y / chunk_size))
 	)
+
+
+func _chunk_rng(chunk: Vector2i, salt: String) -> RandomNumberGenerator:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("%s:%d:%d" % [salt, chunk.x, chunk.y])
+	return rng
 
 
 func _on_player_died() -> void:
