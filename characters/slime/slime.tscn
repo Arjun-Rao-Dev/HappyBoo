@@ -1,11 +1,11 @@
 [gd_scene format=3 uid="uid://ogik4s70pgwl"]
 
-[ext_resource type="Texture2D" uid="uid://dvgfmy6vtvjji" path="res://characters/slime/slime_body.png" id="1_3j35h"]
-[ext_resource type="Script" uid="uid://dnbjp2524b1py" path="res://characters/slime/slime.gd" id="1_87y5x"]
-[ext_resource type="Texture2D" uid="uid://b7rhtttevhxtj" path="res://characters/ground_shadow.png" id="1_cq7ej"]
-[ext_resource type="Texture2D" uid="uid://c078jrp2yvc4s" path="res://characters/slime/slime_face.png" id="2_ygydt"]
-[ext_resource type="Texture2D" uid="uid://btbxea1f3vwot" path="res://characters/slime/slime_body_hurt.png" id="4_0qu0c"]
-[ext_resource type="Texture2D" uid="uid://cai2ijnbypqtr" path="res://characters/slime/slime_hurt_eyes.png" id="4_hi70h"]
+[ext_resource type="Texture2D" path="res://characters/slime/slime_body.png" id="1_3j35h"]
+[ext_resource type="Script" path="res://characters/slime/slime.gd" id="1_87y5x"]
+[ext_resource type="Texture2D" path="res://characters/ground_shadow.png" id="1_cq7ej"]
+[ext_resource type="Texture2D" path="res://characters/slime/slime_face.png" id="2_ygydt"]
+[ext_resource type="Texture2D" path="res://characters/slime/slime_body_hurt.png" id="4_0qu0c"]
+[ext_resource type="Texture2D" path="res://characters/slime/slime_hurt_eyes.png" id="4_hi70h"]
 
 [sub_resource type="Animation" id="Animation_y4lve"]
 length = 0.001

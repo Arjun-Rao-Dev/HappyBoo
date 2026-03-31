@@ -195,7 +195,7 @@ func _sync_remote_players_from_roster() -> void:
 			continue
 		to_remove.append(peer_id)
 	for peer_id in to_remove:
-		var node := remote_players[peer_id]
+		var node: Variant = remote_players[peer_id]
 		if node and is_instance_valid(node):
 			node.queue_free()
 		remote_players.erase(peer_id)
@@ -204,11 +204,11 @@ func _sync_remote_players_from_roster() -> void:
 
 func _build_host_snapshot() -> Dictionary:
 	var players_snapshot: Dictionary = {}
-	players_snapshot[String(MultiplayerSession.local_peer_id)] = _player_state(player)
+	players_snapshot[str(MultiplayerSession.local_peer_id)] = _player_state(player)
 	for peer_id in remote_players.keys():
-		var node := remote_players[peer_id]
+		var node: Variant = remote_players[peer_id]
 		if node and is_instance_valid(node):
-			players_snapshot[String(peer_id)] = _player_state(node)
+			players_snapshot[str(peer_id)] = _player_state(node)
 
 	var mobs_snapshot: Array = []
 	var foods_snapshot: Array = []
@@ -291,7 +291,7 @@ func _check_pvp_winner() -> void:
 	if not player.is_dead_state():
 		alive_names.append(local_name)
 	for peer_id in remote_players.keys():
-		var node := remote_players[peer_id]
+		var node: Variant = remote_players[peer_id]
 		if node and is_instance_valid(node) and not node.is_dead_state():
 			alive_names.append(_username_for_peer(peer_id))
 	if alive_names.size() > 1:
