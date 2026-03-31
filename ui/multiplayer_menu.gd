@@ -24,6 +24,8 @@ func _ready() -> void:
 	join_port_input.text = str(MultiplayerSession.DEFAULT_PORT)
 	session_label.text = "Session: -"
 	status_label.text = "Host on LAN or join by host IP + port."
+	if OS.has_feature("web"):
+		status_label.text = "LAN multiplayer is not supported in web builds. Use desktop on the same network."
 
 	host_button.pressed.connect(_on_host_pressed)
 	join_button.pressed.connect(_on_join_pressed)
@@ -59,7 +61,10 @@ func _on_host_pressed() -> void:
 	MultiplayerSession.set_mode(_selected_mode())
 	var err := MultiplayerSession.host_lan(_parsed_port(host_port_input), MultiplayerSession.MAX_PLAYERS)
 	if err != OK:
-		status_label.text = "Could not host LAN (error %d)." % err
+		if err == ERR_UNAVAILABLE:
+			status_label.text = "LAN hosting is unavailable in browser builds."
+		else:
+			status_label.text = "Could not host LAN (error %d)." % err
 	_refresh_buttons()
 
 
@@ -70,7 +75,10 @@ func _on_join_pressed() -> void:
 		host_ip = MultiplayerSession.DEFAULT_HOST
 	var err := MultiplayerSession.join_lan(host_ip, _parsed_port(join_port_input))
 	if err != OK:
-		status_label.text = "Could not join LAN (error %d)." % err
+		if err == ERR_UNAVAILABLE:
+			status_label.text = "LAN join is unavailable in browser builds."
+		else:
+			status_label.text = "Could not join LAN (error %d)." % err
 	_refresh_buttons()
 
 
@@ -129,14 +137,15 @@ func _on_host_disconnected(reason: String) -> void:
 
 func _refresh_buttons() -> void:
 	var in_session := MultiplayerSession.is_multiplayer
-	host_button.disabled = in_session
-	join_button.disabled = in_session
+	var lan_unavailable := OS.has_feature("web")
+	host_button.disabled = in_session or lan_unavailable
+	join_button.disabled = in_session or lan_unavailable
 	start_button.disabled = (not in_session) or (not MultiplayerSession.is_host)
 	leave_button.disabled = not in_session
 	mode_option.disabled = in_session
-	host_port_input.editable = not in_session
-	join_ip_input.editable = not in_session
-	join_port_input.editable = not in_session
+	host_port_input.editable = (not in_session) and (not lan_unavailable)
+	join_ip_input.editable = (not in_session) and (not lan_unavailable)
+	join_port_input.editable = (not in_session) and (not lan_unavailable)
 
 
 func _exit_tree() -> void:
