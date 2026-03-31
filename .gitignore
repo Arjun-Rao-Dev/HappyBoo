@@ -17,6 +17,3 @@ Thumbs.db
 
 # Logs
 *.log
-
-# Node server deps
-server/node_modules/

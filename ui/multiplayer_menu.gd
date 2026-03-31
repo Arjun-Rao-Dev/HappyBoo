@@ -1,9 +1,10 @@
 extends Control
 
 @onready var mode_option: OptionButton = $CenterContainer/Panel/Margin/VBox/ModeRow/ModeOption
-@onready var signaling_input: LineEdit = $CenterContainer/Panel/Margin/VBox/SignalingRow/SignalingInput
-@onready var room_code_input: LineEdit = $CenterContainer/Panel/Margin/VBox/RoomRow/RoomCodeInput
-@onready var room_code_label: Label = $CenterContainer/Panel/Margin/VBox/RoomCodeLabel
+@onready var host_port_input: LineEdit = $CenterContainer/Panel/Margin/VBox/HostRow/HostPortInput
+@onready var join_ip_input: LineEdit = $CenterContainer/Panel/Margin/VBox/JoinRow/JoinIpInput
+@onready var join_port_input: LineEdit = $CenterContainer/Panel/Margin/VBox/JoinRow/JoinPortInput
+@onready var session_label: Label = $CenterContainer/Panel/Margin/VBox/SessionLabel
 @onready var players_list: ItemList = $CenterContainer/Panel/Margin/VBox/PlayersList
 @onready var host_button: Button = $CenterContainer/Panel/Margin/VBox/ButtonsRow/HostButton
 @onready var join_button: Button = $CenterContainer/Panel/Margin/VBox/ButtonsRow/JoinButton
@@ -18,10 +19,11 @@ func _ready() -> void:
 	mode_option.clear()
 	mode_option.add_item("Team")
 	mode_option.add_item("PvP")
-	signaling_input.text = MultiplayerSession.DEFAULT_SIGNALING_URL
-	room_code_input.text = ""
-	room_code_label.text = "Room Code: -"
-	status_label.text = "Create or join a room to play."
+	host_port_input.text = str(MultiplayerSession.DEFAULT_PORT)
+	join_ip_input.text = MultiplayerSession.DEFAULT_HOST
+	join_port_input.text = str(MultiplayerSession.DEFAULT_PORT)
+	session_label.text = "Session: -"
+	status_label.text = "Host on LAN or join by host IP + port."
 
 	host_button.pressed.connect(_on_host_pressed)
 	join_button.pressed.connect(_on_join_pressed)
@@ -45,31 +47,30 @@ func _selected_mode() -> String:
 	return "team"
 
 
-func _ensure_connected() -> bool:
-	var err := MultiplayerSession.connect_to_signaling(signaling_input.text)
-	if err != OK:
-		status_label.text = "Could not connect (error %d)." % err
-		return false
-	return true
+func _parsed_port(input: LineEdit) -> int:
+	var raw := input.text.strip_edges()
+	if raw.is_empty():
+		return MultiplayerSession.DEFAULT_PORT
+	var parsed := int(raw)
+	return clampi(parsed, 1, 65535)
 
 
 func _on_host_pressed() -> void:
-	if not _ensure_connected():
-		return
-	MultiplayerSession.create_room(_selected_mode())
-	status_label.text = "Creating room..."
+	MultiplayerSession.set_mode(_selected_mode())
+	var err := MultiplayerSession.host_lan(_parsed_port(host_port_input), MultiplayerSession.MAX_PLAYERS)
+	if err != OK:
+		status_label.text = "Could not host LAN (error %d)." % err
 	_refresh_buttons()
 
 
 func _on_join_pressed() -> void:
-	if not _ensure_connected():
-		return
-	var room_code := room_code_input.text.strip_edges().to_upper()
-	if room_code.is_empty():
-		status_label.text = "Enter a room code first."
-		return
-	MultiplayerSession.join_room(room_code, _selected_mode())
-	status_label.text = "Joining room..."
+	MultiplayerSession.set_mode(_selected_mode())
+	var host_ip := join_ip_input.text.strip_edges()
+	if host_ip.is_empty():
+		host_ip = MultiplayerSession.DEFAULT_HOST
+	var err := MultiplayerSession.join_lan(host_ip, _parsed_port(join_port_input))
+	if err != OK:
+		status_label.text = "Could not join LAN (error %d)." % err
 	_refresh_buttons()
 
 
@@ -78,8 +79,8 @@ func _on_start_pressed() -> void:
 
 
 func _on_leave_pressed() -> void:
-	MultiplayerSession.leave_room()
-	status_label.text = "Left room."
+	MultiplayerSession.leave_session()
+	status_label.text = "Left LAN session."
 	_refresh_buttons()
 
 
@@ -95,9 +96,9 @@ func _on_status_changed(message: String) -> void:
 
 func _on_room_changed(code: String) -> void:
 	if code.is_empty():
-		room_code_label.text = "Room Code: -"
+		session_label.text = "Session: -"
 	else:
-		room_code_label.text = "Room Code: %s" % code
+		session_label.text = "Session: %s" % code
 	_refresh_buttons()
 
 
@@ -127,14 +128,15 @@ func _on_host_disconnected(reason: String) -> void:
 
 
 func _refresh_buttons() -> void:
-	var in_room := not MultiplayerSession.room_code.is_empty()
-	host_button.disabled = in_room
-	join_button.disabled = in_room
-	start_button.disabled = (not in_room) or (not MultiplayerSession.is_host)
-	leave_button.disabled = not in_room
-	mode_option.disabled = in_room
-	signaling_input.editable = not in_room
-	room_code_input.editable = not in_room
+	var in_session := MultiplayerSession.is_multiplayer
+	host_button.disabled = in_session
+	join_button.disabled = in_session
+	start_button.disabled = (not in_session) or (not MultiplayerSession.is_host)
+	leave_button.disabled = not in_session
+	mode_option.disabled = in_session
+	host_port_input.editable = not in_session
+	join_ip_input.editable = not in_session
+	join_port_input.editable = not in_session
 
 
 func _exit_tree() -> void:

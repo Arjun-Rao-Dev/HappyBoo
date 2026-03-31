@@ -40,7 +40,7 @@ theme_override_constants/separation = 12
 [node name="Title" type="Label" parent="CenterContainer/Panel/Margin/VBox"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 38
-text = "Multiplayer"
+text = "Multiplayer (LAN)"
 horizontal_alignment = 1
 
 [node name="ModeRow" type="HBoxContainer" parent="CenterContainer/Panel/Margin/VBox"]
@@ -55,31 +55,36 @@ text = "Mode"
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="SignalingRow" type="HBoxContainer" parent="CenterContainer/Panel/Margin/VBox"]
+[node name="HostRow" type="HBoxContainer" parent="CenterContainer/Panel/Margin/VBox"]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="SignalingLabel" type="Label" parent="CenterContainer/Panel/Margin/VBox/SignalingRow"]
+[node name="HostLabel" type="Label" parent="CenterContainer/Panel/Margin/VBox/HostRow"]
 layout_mode = 2
-text = "Signaling URL"
+text = "Host Port"
 
-[node name="SignalingInput" type="LineEdit" parent="CenterContainer/Panel/Margin/VBox/SignalingRow"]
+[node name="HostPortInput" type="LineEdit" parent="CenterContainer/Panel/Margin/VBox/HostRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-placeholder_text = "ws://localhost:8080"
+placeholder_text = "7000"
 
-[node name="RoomRow" type="HBoxContainer" parent="CenterContainer/Panel/Margin/VBox"]
+[node name="JoinRow" type="HBoxContainer" parent="CenterContainer/Panel/Margin/VBox"]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="RoomCodeInput" type="LineEdit" parent="CenterContainer/Panel/Margin/VBox/RoomRow"]
+[node name="JoinIpInput" type="LineEdit" parent="CenterContainer/Panel/Margin/VBox/JoinRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-placeholder_text = "Room Code"
+placeholder_text = "Host LAN IP (e.g. 192.168.1.10)"
 
-[node name="RoomCodeLabel" type="Label" parent="CenterContainer/Panel/Margin/VBox"]
+[node name="JoinPortInput" type="LineEdit" parent="CenterContainer/Panel/Margin/VBox/JoinRow"]
 layout_mode = 2
-text = "Room Code: -"
+custom_minimum_size = Vector2(130, 0)
+placeholder_text = "7000"
+
+[node name="SessionLabel" type="Label" parent="CenterContainer/Panel/Margin/VBox"]
+layout_mode = 2
+text = "Session: -"
 
 [node name="ButtonsRow" type="HBoxContainer" parent="CenterContainer/Panel/Margin/VBox"]
 layout_mode = 2
@@ -116,7 +121,7 @@ layout_mode = 2
 [node name="StatusLabel" type="Label" parent="CenterContainer/Panel/Margin/VBox"]
 layout_mode = 2
 autowrap_mode = 3
-text = "Create or join a room to play."
+text = "Host on LAN or join by host IP + port."
 
 [node name="BottomRow" type="HBoxContainer" parent="CenterContainer/Panel/Margin/VBox"]
 layout_mode = 2
