@@ -310,9 +310,9 @@ func _cleanup_pvp_mode_entities() -> void:
 	for mob in get_tree().get_nodes_in_group("mobs"):
 		if mob and is_instance_valid(mob):
 			mob.queue_free()
-	for node in get_children():
-		if node is Area2D and String(node.get_script()).contains("food_pickup.gd"):
-			node.queue_free()
+	for food in get_tree().get_nodes_in_group("foods"):
+		if food and is_instance_valid(food):
+			food.queue_free()
 
 
 func _exit_tree() -> void:

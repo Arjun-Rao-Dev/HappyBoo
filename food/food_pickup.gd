@@ -21,6 +21,7 @@ const FOOD_TEXTURES: Array[Texture2D] = [
 
 
 func _ready() -> void:
+	add_to_group("foods")
 	body_entered.connect(_on_body_entered)
 	sprite.texture = FOOD_TEXTURES.pick_random()
 	sprite.scale = Vector2.ONE * randf_range(1.6, 2.1)
