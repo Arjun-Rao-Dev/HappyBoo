@@ -48,6 +48,7 @@ var local_input_tick: int = 0
 @onready var projectile_scene_mp: PackedScene = preload("res://pistol/projectile.tscn")
 @onready var muzzle_flash_scene_mp: PackedScene = preload("res://pistol/muzzle_flash/muzzle_flash.tscn")
 @onready var game_over_ui: CanvasLayer = $GameOverUI
+@onready var game_over_label: Label = $GameOverUI/GameOverPanel/CenterBox/VBoxContainer/GameOverLabel
 @onready var restart_button: Button = $GameOverUI/GameOverPanel/CenterBox/VBoxContainer/RestartButton
 @onready var quit_to_title_button: Button = $GameOverUI/GameOverPanel/CenterBox/VBoxContainer/QuitToTitleButton
 @onready var score_label: Label = $HUD/TopLeftPanel/Margin/VBox/ScoreLabel
@@ -68,6 +69,10 @@ func _ready() -> void:
 	Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
 	game_over_ui.visible = false
 	game_over_ui.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
+	game_over_label.text = "GAME OVER"
+	restart_button.visible = true
+	restart_button.text = "New Run"
+	quit_to_title_button.text = "Quit to Title"
 	crosshair.visible = true
 	if game_music.stream is AudioStreamMP3:
 		(game_music.stream as AudioStreamMP3).loop = true
@@ -193,7 +198,7 @@ func _on_network_event_received(event_data: Dictionary) -> void:
 	var event_type := String(event_data.get("type", ""))
 	if event_type == "match_end":
 		var message := String(event_data.get("message", "Match ended."))
-		_show_multiplayer_end_and_return(message)
+		_show_pvp_winner_screen(message)
 	elif event_type == "projectile_spawn":
 		_spawn_network_projectile_visual(event_data)
 
@@ -405,6 +410,21 @@ func _show_multiplayer_end_and_return(message: String) -> void:
 	get_tree().change_scene_to_file("res://ui/title_menu.tscn")
 
 
+func _show_pvp_winner_screen(message: String) -> void:
+	if not is_multiplayer_session:
+		_show_multiplayer_end_and_return(message)
+		return
+	get_tree().paused = true
+	crosshair.visible = false
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	game_music.stream_paused = true
+	game_over_ui.visible = true
+	game_over_label.text = message
+	restart_button.visible = false
+	quit_to_title_button.text = "Back to Title"
+	quit_to_title_button.grab_focus()
+
+
 func _register_player_projectile_events(player_node: Node, owner_peer_id: int) -> void:
 	if player_node == null:
 		return
@@ -490,12 +510,12 @@ func _check_pvp_winner() -> void:
 		return
 	var message := "PvP ended."
 	if alive_names.size() == 1:
-		message = "%s wins!" % alive_names[0]
+		message = "%s Wins!" % alive_names[0]
 	MultiplayerSession.send_host_event({
 		"type": "match_end",
 		"message": message
 	})
-	_show_multiplayer_end_and_return(message)
+	_show_pvp_winner_screen(message)
 
 
 func _cleanup_pvp_mode_entities() -> void:
