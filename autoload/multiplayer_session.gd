@@ -13,6 +13,7 @@ signal host_disconnected(reason: String)
 const MAX_PLAYERS := 4
 const DEFAULT_PORT := 7000
 const DEFAULT_HOST := "127.0.0.1"
+const HOST_PORT_SCAN_SPAN := 50
 
 var mode: String = "single"
 var is_multiplayer: bool = false
@@ -20,6 +21,7 @@ var is_host: bool = false
 var room_code: String = ""
 var local_peer_id: int = 1
 var players: Dictionary = {}
+var active_port: int = -1
 
 var _enet_peer: ENetMultiplayerPeer
 
@@ -39,6 +41,7 @@ func reset_to_single_player() -> void:
 	is_host = false
 	room_code = ""
 	local_peer_id = 1
+	active_port = -1
 	players.clear()
 	emit_signal("room_changed", room_code)
 	emit_signal("roster_updated", players)
@@ -57,24 +60,36 @@ func host_lan(port: int = DEFAULT_PORT, max_players: int = MAX_PLAYERS) -> int:
 		emit_signal("status_changed", "LAN host is not supported in browser builds.")
 		return ERR_UNAVAILABLE
 
-	var normalized_port := clampi(port, 1, 65535)
+	var start_port := clampi(port, 1, 65535)
 	var normalized_max := clampi(max_players, 2, MAX_PLAYERS)
-	_enet_peer = ENetMultiplayerPeer.new()
-	var err := _enet_peer.create_server(normalized_port, normalized_max)
-	if err != OK:
-		emit_signal("status_changed", "Host failed (%d)." % err)
-		return err
+	var selected_port := -1
+	var last_err := OK
+	for offset in range(HOST_PORT_SCAN_SPAN + 1):
+		var try_port := start_port + offset
+		if try_port > 65535:
+			break
+		_enet_peer = ENetMultiplayerPeer.new()
+		var err := _enet_peer.create_server(try_port, normalized_max)
+		if err == OK:
+			selected_port = try_port
+			break
+		last_err = err
+		_enet_peer = null
+	if selected_port == -1:
+		emit_signal("status_changed", "No free LAN port in range %d-%d (last error %d)." % [start_port, min(start_port + HOST_PORT_SCAN_SPAN, 65535), last_err])
+		return last_err
 
 	multiplayer.multiplayer_peer = _enet_peer
 	is_multiplayer = true
 	is_host = true
 	local_peer_id = multiplayer.get_unique_id()
+	active_port = selected_port
 	room_code = "LAN"
 	players = {
 		local_peer_id: {"username": _get_local_username()}
 	}
 	emit_signal("connection_changed", true)
-	emit_signal("status_changed", "Hosting LAN on port %d." % normalized_port)
+	emit_signal("status_changed", "Hosting LAN on port %d." % selected_port)
 	emit_signal("room_changed", room_code)
 	emit_signal("roster_updated", players)
 	return OK
@@ -100,6 +115,7 @@ func join_lan(host_ip: String, port: int = DEFAULT_PORT) -> int:
 	is_multiplayer = true
 	is_host = false
 	room_code = "LAN"
+	active_port = normalized_port
 	players.clear()
 	emit_signal("status_changed", "Joining %s:%d..." % [target_host, normalized_port])
 	emit_signal("room_changed", room_code)
@@ -114,6 +130,7 @@ func leave_session() -> void:
 	is_multiplayer = false
 	is_host = false
 	room_code = ""
+	active_port = -1
 	players.clear()
 	emit_signal("connection_changed", false)
 	emit_signal("room_changed", room_code)

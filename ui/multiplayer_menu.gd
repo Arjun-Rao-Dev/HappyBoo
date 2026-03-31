@@ -65,6 +65,11 @@ func _on_host_pressed() -> void:
 			status_label.text = "LAN hosting is unavailable in browser builds."
 		else:
 			status_label.text = "Could not host LAN (error %d)." % err
+	else:
+		var port := MultiplayerSession.active_port
+		if port > 0:
+			session_label.text = "Session: LAN (%d)" % port
+			status_label.text = "Hosting LAN on port %d." % port
 	_refresh_buttons()
 
 
@@ -106,7 +111,11 @@ func _on_room_changed(code: String) -> void:
 	if code.is_empty():
 		session_label.text = "Session: -"
 	else:
-		session_label.text = "Session: %s" % code
+		var port := MultiplayerSession.active_port
+		if port > 0:
+			session_label.text = "Session: %s (%d)" % [code, port]
+		else:
+			session_label.text = "Session: %s" % code
 	_refresh_buttons()
 
 
