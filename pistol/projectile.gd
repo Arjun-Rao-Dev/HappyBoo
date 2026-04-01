@@ -13,6 +13,7 @@ var shooter: Node = null
 
 
 func _ready() -> void:
+	add_to_group("projectiles")
 	life_timer.wait_time = life_time
 	life_timer.start()
 	body_entered.connect(_on_body_entered)
