@@ -330,6 +330,124 @@ func _apply_host_snapshot(snapshot: Dictionary) -> void:
 		if peer_id != MultiplayerSession.local_peer_id:
 			_update_remote_player_animation(target_player, previous_position, next_position)
 
+	if not is_host_session and session_mode == "team":
+		_apply_remote_mobs_snapshot(snapshot.get("mobs", []))
+		_apply_remote_foods_snapshot(snapshot.get("foods", []))
+
+
+func _apply_remote_mobs_snapshot(mobs_payload: Variant) -> void:
+	if not (mobs_payload is Array):
+		return
+	var snapshot_mobs := mobs_payload as Array
+	var seen_ids: Dictionary = {}
+	for entry_var in snapshot_mobs:
+		if not (entry_var is Dictionary):
+			continue
+		var entry := entry_var as Dictionary
+		var mob_id := int(entry.get("id", 0))
+		if mob_id <= 0:
+			continue
+		seen_ids[mob_id] = true
+		var mob_node: Node2D = null
+		var existing: Variant = remote_mobs.get(mob_id, null)
+		if existing is Node2D and is_instance_valid(existing):
+			mob_node = existing as Node2D
+		else:
+			if mob_scene == null:
+				continue
+			var created := mob_scene.instantiate()
+			if not (created is Node2D):
+				if created:
+					created.queue_free()
+				continue
+			mob_node = created as Node2D
+			_configure_remote_world_visual_entity(mob_node, true)
+			add_child(mob_node)
+			remote_mobs[mob_id] = mob_node
+		mob_node.global_position = Vector2(float(entry.get("x", mob_node.global_position.x)), float(entry.get("y", mob_node.global_position.y)))
+		if mob_node.has_method("set_physics_process"):
+			mob_node.set_physics_process(false)
+		if mob_node.has_method("set_process"):
+			mob_node.set_process(false)
+	var to_remove: Array = []
+	for mob_id in remote_mobs.keys():
+		if seen_ids.has(mob_id):
+			continue
+		to_remove.append(mob_id)
+	for mob_id in to_remove:
+		var mob_var: Variant = remote_mobs[mob_id]
+		if mob_var and is_instance_valid(mob_var):
+			mob_var.queue_free()
+		remote_mobs.erase(mob_id)
+
+
+func _apply_remote_foods_snapshot(foods_payload: Variant) -> void:
+	if not (foods_payload is Array):
+		return
+	var snapshot_foods := foods_payload as Array
+	var seen_ids: Dictionary = {}
+	for entry_var in snapshot_foods:
+		if not (entry_var is Dictionary):
+			continue
+		var entry := entry_var as Dictionary
+		var food_id := int(entry.get("id", 0))
+		if food_id <= 0:
+			continue
+		seen_ids[food_id] = true
+		var food_node: Node2D = null
+		var existing: Variant = remote_foods.get(food_id, null)
+		if existing is Node2D and is_instance_valid(existing):
+			food_node = existing as Node2D
+		else:
+			if food_scene == null:
+				continue
+			var created := food_scene.instantiate()
+			if not (created is Node2D):
+				if created:
+					created.queue_free()
+				continue
+			food_node = created as Node2D
+			_configure_remote_world_visual_entity(food_node, false)
+			add_child(food_node)
+			remote_foods[food_id] = food_node
+		food_node.global_position = Vector2(float(entry.get("x", food_node.global_position.x)), float(entry.get("y", food_node.global_position.y)))
+	var to_remove: Array = []
+	for food_id in remote_foods.keys():
+		if seen_ids.has(food_id):
+			continue
+		to_remove.append(food_id)
+	for food_id in to_remove:
+		var food_var: Variant = remote_foods[food_id]
+		if food_var and is_instance_valid(food_var):
+			food_var.queue_free()
+		remote_foods.erase(food_id)
+
+
+func _configure_remote_world_visual_entity(node: Node, is_mob: bool) -> void:
+	if node.has_method("set_physics_process"):
+		node.set_physics_process(false)
+	if node.has_method("set_process"):
+		node.set_process(false)
+	if is_mob and node.is_in_group("mobs"):
+		node.remove_from_group("mobs")
+	if not is_mob and node.is_in_group("foods"):
+		node.remove_from_group("foods")
+	var collision_object: CollisionObject2D = null
+	if node is CollisionObject2D:
+		collision_object = node as CollisionObject2D
+	if collision_object != null:
+		collision_object.collision_layer = 0
+		collision_object.collision_mask = 0
+		if collision_object is Area2D:
+			var area := collision_object as Area2D
+			area.monitoring = false
+			area.monitorable = false
+	for child in node.get_children():
+		if child is CollisionShape2D:
+			(child as CollisionShape2D).disabled = true
+		elif child is CollisionPolygon2D:
+			(child as CollisionPolygon2D).disabled = true
+
 
 func _player_state(player_node: Node) -> Dictionary:
 	if not (player_node is Node2D):
