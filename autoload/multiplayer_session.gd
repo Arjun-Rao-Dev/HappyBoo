@@ -14,7 +14,8 @@ const MAX_PLAYERS := 4
 const DEFAULT_PORT := 7000
 const DEFAULT_HOST := "127.0.0.1"
 const HOST_PORT_SCAN_SPAN := 50
-const DEFAULT_RELAY_URL := "ws://127.0.0.1:8080"
+const DEFAULT_RELAY_URL := "wss://happyboo-relay-production.up.railway.app"
+const LOCAL_DEBUG_RELAY_URL := "ws://127.0.0.1:8080"
 
 enum TransportMode {
 	NONE,
@@ -413,7 +414,7 @@ func _flush_relay_outbox() -> void:
 	if _relay_peer.get_ready_state() != WebSocketPeer.STATE_OPEN:
 		return
 	while not _relay_outbox.is_empty():
-		var payload := _relay_outbox.pop_front()
+		var payload: String = String(_relay_outbox.pop_front())
 		_relay_peer.send_text(payload)
 
 
@@ -429,7 +430,10 @@ func _normalized_relay_url(raw_url: String) -> String:
 	if url.is_empty():
 		url = DEFAULT_RELAY_URL
 	if not url.begins_with("ws://") and not url.begins_with("wss://"):
-		url = "ws://%s" % url
+		if OS.has_feature("web"):
+			url = "wss://%s" % url
+		else:
+			url = "ws://%s" % url
 	return url
 
 

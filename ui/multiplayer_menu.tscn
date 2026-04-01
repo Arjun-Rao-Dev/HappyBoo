@@ -94,7 +94,7 @@ text = "Relay URL"
 [node name="RelayUrlInput" type="LineEdit" parent="CenterContainer/Panel/Margin/VBox/RelayRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-placeholder_text = "ws://127.0.0.1:8080"
+placeholder_text = "wss://happyboo-relay-production.up.railway.app"
 
 [node name="RoomRow" type="HBoxContainer" parent="CenterContainer/Panel/Margin/VBox"]
 visible = false

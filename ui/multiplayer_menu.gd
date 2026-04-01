@@ -29,7 +29,10 @@ func _ready() -> void:
 	host_port_input.text = str(MultiplayerSession.DEFAULT_PORT)
 	join_ip_input.text = MultiplayerSession.DEFAULT_HOST
 	join_port_input.text = str(MultiplayerSession.DEFAULT_PORT)
-	relay_url_input.text = MultiplayerSession.DEFAULT_RELAY_URL
+	if OS.has_feature("web"):
+		relay_url_input.text = MultiplayerSession.DEFAULT_RELAY_URL
+	else:
+		relay_url_input.text = MultiplayerSession.LOCAL_DEBUG_RELAY_URL
 	room_code_input.text = ""
 	session_label.text = "Session: -"
 	status_label.text = "Host a multiplayer session or join one."
