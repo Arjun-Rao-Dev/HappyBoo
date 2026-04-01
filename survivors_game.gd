@@ -25,6 +25,7 @@ extends Node2D
 @export var remote_rotation_lerp_speed: float = 16.0
 const TREE_ROTATION_VARIATION := 0.08
 const MULTIPLAYER_DEBUG_LOGS := false
+const REMOTE_ENTITY_DESPAWN_GRACE_SNAPSHOTS := 3
 
 var spawned_chunks: Dictionary = {}
 var score: int = 0
@@ -38,12 +39,28 @@ var remote_input_ticks: Dictionary = {}
 var remote_mobs: Dictionary = {}
 var remote_foods: Dictionary = {}
 var remote_projectiles: Dictionary = {}
+var remote_mob_target_positions: Dictionary = {}
+var remote_projectile_target_positions: Dictionary = {}
+var remote_projectile_target_rotations: Dictionary = {}
+var remote_missing_mobs: Dictionary = {}
+var remote_missing_foods: Dictionary = {}
+var remote_missing_projectiles: Dictionary = {}
 var host_mob_net_ids: Dictionary = {}
 var host_food_net_ids: Dictionary = {}
 var host_projectile_net_ids: Dictionary = {}
 var host_next_mob_net_id: int = 1
 var host_next_food_net_id: int = 1
 var host_next_projectile_net_id: int = 1
+var host_snapshot_seq: int = 0
+var latest_snapshot_seq: int = -1
+var stale_snapshot_count: int = 0
+var mp_created_mobs: int = 0
+var mp_updated_mobs: int = 0
+var mp_removed_mobs: int = 0
+var mp_created_projectiles: int = 0
+var mp_updated_projectiles: int = 0
+var mp_removed_projectiles: int = 0
+var mp_last_debug_log_ms: int = 0
 var remote_last_positions: Dictionary = {}
 var remote_target_positions: Dictionary = {}
 var remote_target_gun_rotations: Dictionary = {}
@@ -262,6 +279,7 @@ func _sync_remote_players_from_roster() -> void:
 
 
 func _build_host_snapshot() -> Dictionary:
+	host_snapshot_seq += 1
 	var players_snapshot: Dictionary = {}
 	players_snapshot[str(MultiplayerSession.local_peer_id)] = _player_state(player)
 	for peer_id in remote_players.keys():
@@ -321,6 +339,7 @@ func _build_host_snapshot() -> Dictionary:
 	_host_entity_net_id_gc(host_projectile_net_ids, seen_host_projectile_instances)
 
 	return {
+		"seq": host_snapshot_seq,
 		"mode": session_mode,
 		"score": score,
 		"players": players_snapshot,
@@ -331,6 +350,13 @@ func _build_host_snapshot() -> Dictionary:
 
 
 func _apply_host_snapshot(snapshot: Dictionary) -> void:
+	var snapshot_seq := int(snapshot.get("seq", -1))
+	if snapshot_seq >= 0 and snapshot_seq <= latest_snapshot_seq:
+		stale_snapshot_count += 1
+		return
+	if snapshot_seq >= 0:
+		latest_snapshot_seq = snapshot_seq
+
 	score = int(snapshot.get("score", score))
 	_update_score_label()
 
@@ -374,6 +400,7 @@ func _apply_host_snapshot(snapshot: Dictionary) -> void:
 		_apply_remote_mobs_snapshot(snapshot.get("mobs", []))
 		_apply_remote_foods_snapshot(snapshot.get("foods", []))
 		_apply_remote_projectiles_snapshot(snapshot.get("projectiles", []))
+		_maybe_log_mp_state()
 
 
 func _host_entity_net_id(node: Node2D, is_mob: bool) -> String:
@@ -425,6 +452,7 @@ func _apply_remote_mobs_snapshot(mobs_payload: Variant) -> void:
 			continue
 		seen_ids[mob_id] = true
 		var mob_node: Node2D = null
+		var is_new := false
 		var existing: Variant = remote_mobs.get(mob_id, null)
 		if existing is Node2D and is_instance_valid(existing):
 			mob_node = existing as Node2D
@@ -440,7 +468,14 @@ func _apply_remote_mobs_snapshot(mobs_payload: Variant) -> void:
 			_configure_remote_world_visual_entity(mob_node, true)
 			add_child(mob_node)
 			remote_mobs[mob_id] = mob_node
-		mob_node.global_position = Vector2(float(entry.get("x", mob_node.global_position.x)), float(entry.get("y", mob_node.global_position.y)))
+			is_new = true
+			mp_created_mobs += 1
+		var next_position := Vector2(float(entry.get("x", mob_node.global_position.x)), float(entry.get("y", mob_node.global_position.y)))
+		remote_mob_target_positions[mob_id] = next_position
+		if is_new:
+			mob_node.global_position = next_position
+		remote_missing_mobs.erase(mob_id)
+		mp_updated_mobs += 1
 		if mob_node.has_method("set_physics_process"):
 			mob_node.set_physics_process(false)
 		if mob_node.has_method("set_process"):
@@ -449,12 +484,19 @@ func _apply_remote_mobs_snapshot(mobs_payload: Variant) -> void:
 	for mob_id in remote_mobs.keys():
 		if seen_ids.has(mob_id):
 			continue
+		var missed := int(remote_missing_mobs.get(mob_id, 0)) + 1
+		remote_missing_mobs[mob_id] = missed
+		if missed < REMOTE_ENTITY_DESPAWN_GRACE_SNAPSHOTS:
+			continue
 		to_remove.append(mob_id)
 	for mob_id in to_remove:
 		var mob_var: Variant = remote_mobs[mob_id]
 		if mob_var and is_instance_valid(mob_var):
 			mob_var.queue_free()
 		remote_mobs.erase(mob_id)
+		remote_mob_target_positions.erase(mob_id)
+		remote_missing_mobs.erase(mob_id)
+		mp_removed_mobs += 1
 
 
 func _apply_remote_foods_snapshot(foods_payload: Variant) -> void:
@@ -487,9 +529,14 @@ func _apply_remote_foods_snapshot(foods_payload: Variant) -> void:
 			add_child(food_node)
 			remote_foods[food_id] = food_node
 		food_node.global_position = Vector2(float(entry.get("x", food_node.global_position.x)), float(entry.get("y", food_node.global_position.y)))
+		remote_missing_foods.erase(food_id)
 	var to_remove: Array = []
 	for food_id in remote_foods.keys():
 		if seen_ids.has(food_id):
+			continue
+		var missed := int(remote_missing_foods.get(food_id, 0)) + 1
+		remote_missing_foods[food_id] = missed
+		if missed < REMOTE_ENTITY_DESPAWN_GRACE_SNAPSHOTS:
 			continue
 		to_remove.append(food_id)
 	for food_id in to_remove:
@@ -497,6 +544,7 @@ func _apply_remote_foods_snapshot(foods_payload: Variant) -> void:
 		if food_var and is_instance_valid(food_var):
 			food_var.queue_free()
 		remote_foods.erase(food_id)
+		remote_missing_foods.erase(food_id)
 
 
 func _apply_remote_projectiles_snapshot(projectiles_payload: Variant) -> void:
@@ -513,6 +561,7 @@ func _apply_remote_projectiles_snapshot(projectiles_payload: Variant) -> void:
 			continue
 		seen_ids[projectile_id] = true
 		var projectile_node: Area2D = null
+		var is_new := false
 		var existing: Variant = remote_projectiles.get(projectile_id, null)
 		if existing is Area2D and is_instance_valid(existing):
 			projectile_node = existing as Area2D
@@ -529,15 +578,24 @@ func _apply_remote_projectiles_snapshot(projectiles_payload: Variant) -> void:
 			_configure_remote_world_visual_entity(projectile_node, false)
 			add_child(projectile_node)
 			remote_projectiles[projectile_id] = projectile_node
-		projectile_node.global_position = Vector2(
+			is_new = true
+			mp_created_projectiles += 1
+		var next_position := Vector2(
 			float(entry.get("x", projectile_node.global_position.x)),
 			float(entry.get("y", projectile_node.global_position.y))
 		)
-		projectile_node.global_rotation = float(entry.get("rotation", projectile_node.global_rotation))
+		remote_projectile_target_positions[projectile_id] = next_position
+		var next_rotation := float(entry.get("rotation", projectile_node.global_rotation))
+		remote_projectile_target_rotations[projectile_id] = next_rotation
+		if is_new:
+			projectile_node.global_position = next_position
+			projectile_node.global_rotation = next_rotation
 		projectile_node.set("direction", Vector2(
 			float(entry.get("dx", 1.0)),
 			float(entry.get("dy", 0.0))
 		))
+		remote_missing_projectiles.erase(projectile_id)
+		mp_updated_projectiles += 1
 		if projectile_node.has_method("set_physics_process"):
 			projectile_node.set_physics_process(false)
 		if projectile_node.has_method("set_process"):
@@ -546,12 +604,20 @@ func _apply_remote_projectiles_snapshot(projectiles_payload: Variant) -> void:
 	for projectile_id in remote_projectiles.keys():
 		if seen_ids.has(projectile_id):
 			continue
+		var missed := int(remote_missing_projectiles.get(projectile_id, 0)) + 1
+		remote_missing_projectiles[projectile_id] = missed
+		if missed < REMOTE_ENTITY_DESPAWN_GRACE_SNAPSHOTS:
+			continue
 		to_remove.append(projectile_id)
 	for projectile_id in to_remove:
 		var projectile_var: Variant = remote_projectiles[projectile_id]
 		if projectile_var and is_instance_valid(projectile_var):
 			projectile_var.queue_free()
 		remote_projectiles.erase(projectile_id)
+		remote_projectile_target_positions.erase(projectile_id)
+		remote_projectile_target_rotations.erase(projectile_id)
+		remote_missing_projectiles.erase(projectile_id)
+		mp_removed_projectiles += 1
 
 
 func _configure_remote_world_visual_entity(node: Node, is_mob: bool) -> void:
@@ -618,6 +684,27 @@ func _mp_debug(message: String) -> void:
 		print("[MP] %s" % message)
 
 
+func _maybe_log_mp_state() -> void:
+	if not MULTIPLAYER_DEBUG_LOGS:
+		return
+	var now_ms := Time.get_ticks_msec()
+	if now_ms - mp_last_debug_log_ms < 1000:
+		return
+	mp_last_debug_log_ms = now_ms
+	print("[MP] seq=%d stale=%d mobs(c/u/r=%d/%d/%d live=%d) proj(c/u/r=%d/%d/%d live=%d)" % [
+		latest_snapshot_seq,
+		stale_snapshot_count,
+		mp_created_mobs,
+		mp_updated_mobs,
+		mp_removed_mobs,
+		remote_mobs.size(),
+		mp_created_projectiles,
+		mp_updated_projectiles,
+		mp_removed_projectiles,
+		remote_projectiles.size()
+	])
+
+
 func _snapshot_player_count(snapshot: Dictionary) -> int:
 	var players_snapshot: Variant = snapshot.get("players", {})
 	if players_snapshot is Dictionary:
@@ -640,6 +727,29 @@ func _interpolate_remote_players(delta: float) -> void:
 			var gun_node := gun as Node2D
 			var target_rotation := float(remote_target_gun_rotations.get(peer_id, gun_node.global_rotation))
 			gun_node.global_rotation = lerp_angle(gun_node.global_rotation, target_rotation, rot_alpha)
+
+
+func _interpolate_remote_world_entities(delta: float) -> void:
+	var mob_alpha := clampf(delta * remote_position_lerp_speed, 0.0, 1.0)
+	for mob_id in remote_mobs.keys():
+		var mob_entry: Variant = remote_mobs[mob_id]
+		if not (mob_entry is Node2D):
+			continue
+		var mob_node := mob_entry as Node2D
+		var target_position: Vector2 = remote_mob_target_positions.get(mob_id, mob_node.global_position)
+		mob_node.global_position = mob_node.global_position.lerp(target_position, mob_alpha)
+
+	var projectile_pos_alpha := clampf(delta * (remote_position_lerp_speed * 1.2), 0.0, 1.0)
+	var projectile_rot_alpha := clampf(delta * remote_rotation_lerp_speed, 0.0, 1.0)
+	for projectile_id in remote_projectiles.keys():
+		var projectile_entry: Variant = remote_projectiles[projectile_id]
+		if not (projectile_entry is Area2D):
+			continue
+		var projectile_node := projectile_entry as Area2D
+		var target_position: Vector2 = remote_projectile_target_positions.get(projectile_id, projectile_node.global_position)
+		projectile_node.global_position = projectile_node.global_position.lerp(target_position, projectile_pos_alpha)
+		var target_rotation := float(remote_projectile_target_rotations.get(projectile_id, projectile_node.global_rotation))
+		projectile_node.global_rotation = lerp_angle(projectile_node.global_rotation, target_rotation, projectile_rot_alpha)
 
 
 func _username_for_peer(peer_id: int) -> String:
@@ -805,6 +915,7 @@ func _physics_process(_delta: float) -> void:
 		_process_multiplayer(_delta)
 		if not is_host_session:
 			_interpolate_remote_players(_delta)
+			_interpolate_remote_world_entities(_delta)
 	_spawn_trees_around_player()
 
 
