@@ -37,10 +37,13 @@ var remote_inputs: Dictionary = {}
 var remote_input_ticks: Dictionary = {}
 var remote_mobs: Dictionary = {}
 var remote_foods: Dictionary = {}
+var remote_projectiles: Dictionary = {}
 var host_mob_net_ids: Dictionary = {}
 var host_food_net_ids: Dictionary = {}
+var host_projectile_net_ids: Dictionary = {}
 var host_next_mob_net_id: int = 1
 var host_next_food_net_id: int = 1
+var host_next_projectile_net_id: int = 1
 var remote_last_positions: Dictionary = {}
 var remote_target_positions: Dictionary = {}
 var remote_target_gun_rotations: Dictionary = {}
@@ -204,7 +207,7 @@ func _on_network_event_received(event_data: Dictionary) -> void:
 		var message := String(event_data.get("message", "Match ended."))
 		_show_pvp_winner_screen(message)
 	elif event_type == "projectile_spawn":
-		_spawn_network_projectile_visual(event_data)
+		_spawn_network_muzzle_flash_visual(event_data)
 
 
 func _on_session_roster_updated(_players: Dictionary) -> void:
@@ -268,8 +271,10 @@ func _build_host_snapshot() -> Dictionary:
 
 	var mobs_snapshot: Array = []
 	var foods_snapshot: Array = []
+	var projectiles_snapshot: Array = []
 	var seen_host_mob_instances: Dictionary = {}
 	var seen_host_food_instances: Dictionary = {}
+	var seen_host_projectile_instances: Dictionary = {}
 	if session_mode == "team":
 		for mob in get_tree().get_nodes_in_group("mobs"):
 			if mob is Node2D:
@@ -291,15 +296,37 @@ func _build_host_snapshot() -> Dictionary:
 					"x": food.global_position.x,
 					"y": food.global_position.y
 				})
+	for projectile_node in get_tree().get_nodes_in_group("projectiles"):
+		if not (projectile_node is Area2D):
+			continue
+		var projectile := projectile_node as Area2D
+		if bool(projectile.get("network_visual_only")):
+			continue
+		var projectile_instance_id := int(projectile.get_instance_id())
+		seen_host_projectile_instances[projectile_instance_id] = true
+		var projectile_direction := Vector2.RIGHT
+		var raw_direction: Variant = projectile.get("direction")
+		if raw_direction is Vector2:
+			projectile_direction = raw_direction as Vector2
+		projectiles_snapshot.append({
+			"id": _host_projectile_net_id(projectile),
+			"x": projectile.global_position.x,
+			"y": projectile.global_position.y,
+			"rotation": projectile.global_rotation,
+			"dx": projectile_direction.x,
+			"dy": projectile_direction.y
+		})
 	_host_entity_net_id_gc(host_mob_net_ids, seen_host_mob_instances)
 	_host_entity_net_id_gc(host_food_net_ids, seen_host_food_instances)
+	_host_entity_net_id_gc(host_projectile_net_ids, seen_host_projectile_instances)
 
 	return {
 		"mode": session_mode,
 		"score": score,
 		"players": players_snapshot,
 		"mobs": mobs_snapshot,
-		"foods": foods_snapshot
+		"foods": foods_snapshot,
+		"projectiles": projectiles_snapshot
 	}
 
 
@@ -346,6 +373,7 @@ func _apply_host_snapshot(snapshot: Dictionary) -> void:
 	if not is_host_session:
 		_apply_remote_mobs_snapshot(snapshot.get("mobs", []))
 		_apply_remote_foods_snapshot(snapshot.get("foods", []))
+		_apply_remote_projectiles_snapshot(snapshot.get("projectiles", []))
 
 
 func _host_entity_net_id(node: Node2D, is_mob: bool) -> String:
@@ -360,6 +388,16 @@ func _host_entity_net_id(node: Node2D, is_mob: bool) -> String:
 		host_next_mob_net_id += 1
 	else:
 		host_next_food_net_id += 1
+	return generated
+
+
+func _host_projectile_net_id(projectile_node: Area2D) -> String:
+	var instance_id := int(projectile_node.get_instance_id())
+	if host_projectile_net_ids.has(instance_id):
+		return String(host_projectile_net_ids[instance_id])
+	var generated := "p%d" % host_next_projectile_net_id
+	host_projectile_net_ids[instance_id] = generated
+	host_next_projectile_net_id += 1
 	return generated
 
 
@@ -459,6 +497,61 @@ func _apply_remote_foods_snapshot(foods_payload: Variant) -> void:
 		if food_var and is_instance_valid(food_var):
 			food_var.queue_free()
 		remote_foods.erase(food_id)
+
+
+func _apply_remote_projectiles_snapshot(projectiles_payload: Variant) -> void:
+	if not (projectiles_payload is Array):
+		return
+	var snapshot_projectiles := projectiles_payload as Array
+	var seen_ids: Dictionary = {}
+	for entry_var in snapshot_projectiles:
+		if not (entry_var is Dictionary):
+			continue
+		var entry := entry_var as Dictionary
+		var projectile_id := String(entry.get("id", "")).strip_edges()
+		if projectile_id.is_empty():
+			continue
+		seen_ids[projectile_id] = true
+		var projectile_node: Area2D = null
+		var existing: Variant = remote_projectiles.get(projectile_id, null)
+		if existing is Area2D and is_instance_valid(existing):
+			projectile_node = existing as Area2D
+		else:
+			if projectile_scene_mp == null:
+				continue
+			var created := projectile_scene_mp.instantiate()
+			if not (created is Area2D):
+				if created:
+					created.queue_free()
+				continue
+			projectile_node = created as Area2D
+			projectile_node.set("network_visual_only", true)
+			_configure_remote_world_visual_entity(projectile_node, false)
+			add_child(projectile_node)
+			remote_projectiles[projectile_id] = projectile_node
+		projectile_node.global_position = Vector2(
+			float(entry.get("x", projectile_node.global_position.x)),
+			float(entry.get("y", projectile_node.global_position.y))
+		)
+		projectile_node.global_rotation = float(entry.get("rotation", projectile_node.global_rotation))
+		projectile_node.set("direction", Vector2(
+			float(entry.get("dx", 1.0)),
+			float(entry.get("dy", 0.0))
+		))
+		if projectile_node.has_method("set_physics_process"):
+			projectile_node.set_physics_process(false)
+		if projectile_node.has_method("set_process"):
+			projectile_node.set_process(false)
+	var to_remove: Array = []
+	for projectile_id in remote_projectiles.keys():
+		if seen_ids.has(projectile_id):
+			continue
+		to_remove.append(projectile_id)
+	for projectile_id in to_remove:
+		var projectile_var: Variant = remote_projectiles[projectile_id]
+		if projectile_var and is_instance_valid(projectile_var):
+			projectile_var.queue_free()
+		remote_projectiles.erase(projectile_id)
 
 
 func _configure_remote_world_visual_entity(node: Node, is_mob: bool) -> void:
@@ -635,6 +728,18 @@ func _spawn_network_projectile_visual(event_data: Dictionary) -> void:
 		return
 	muzzle_flash.global_position = Vector2(float(muzzle_payload.get("x", projectile.global_position.x)), float(muzzle_payload.get("y", projectile.global_position.y)))
 	muzzle_flash.global_rotation = float(muzzle_payload.get("rotation", projectile.rotation))
+	add_child(muzzle_flash)
+
+
+func _spawn_network_muzzle_flash_visual(event_data: Dictionary) -> void:
+	if muzzle_flash_scene_mp == null:
+		return
+	var muzzle_payload: Dictionary = event_data.get("muzzle", {})
+	var muzzle_flash := muzzle_flash_scene_mp.instantiate()
+	if muzzle_flash == null:
+		return
+	muzzle_flash.global_position = Vector2(float(muzzle_payload.get("x", 0.0)), float(muzzle_payload.get("y", 0.0)))
+	muzzle_flash.global_rotation = float(muzzle_payload.get("rotation", 0.0))
 	add_child(muzzle_flash)
 
 
