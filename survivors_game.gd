@@ -37,6 +37,10 @@ var remote_inputs: Dictionary = {}
 var remote_input_ticks: Dictionary = {}
 var remote_mobs: Dictionary = {}
 var remote_foods: Dictionary = {}
+var host_mob_net_ids: Dictionary = {}
+var host_food_net_ids: Dictionary = {}
+var host_next_mob_net_id: int = 1
+var host_next_food_net_id: int = 1
 var remote_last_positions: Dictionary = {}
 var remote_target_positions: Dictionary = {}
 var remote_target_gun_rotations: Dictionary = {}
@@ -264,22 +268,31 @@ func _build_host_snapshot() -> Dictionary:
 
 	var mobs_snapshot: Array = []
 	var foods_snapshot: Array = []
+	var seen_host_mob_instances: Dictionary = {}
+	var seen_host_food_instances: Dictionary = {}
 	if session_mode == "team":
 		for mob in get_tree().get_nodes_in_group("mobs"):
 			if mob is Node2D:
+				var mob_node := mob as Node2D
+				var mob_instance_id := int(mob_node.get_instance_id())
+				seen_host_mob_instances[mob_instance_id] = true
 				mobs_snapshot.append({
-					"id": int(mob.get_instance_id()),
-					"x": (mob as Node2D).global_position.x,
-					"y": (mob as Node2D).global_position.y
+					"id": _host_entity_net_id(mob_node, true),
+					"x": mob_node.global_position.x,
+					"y": mob_node.global_position.y
 				})
 		for node in get_children():
 			if node is Area2D and String(node.get_script()).contains("food_pickup.gd"):
 				var food := node as Area2D
+				var food_instance_id := int(food.get_instance_id())
+				seen_host_food_instances[food_instance_id] = true
 				foods_snapshot.append({
-					"id": int(food.get_instance_id()),
+					"id": _host_entity_net_id(food, false),
 					"x": food.global_position.x,
 					"y": food.global_position.y
 				})
+	_host_entity_net_id_gc(host_mob_net_ids, seen_host_mob_instances)
+	_host_entity_net_id_gc(host_food_net_ids, seen_host_food_instances)
 
 	return {
 		"mode": session_mode,
@@ -330,9 +343,34 @@ func _apply_host_snapshot(snapshot: Dictionary) -> void:
 		if peer_id != MultiplayerSession.local_peer_id:
 			_update_remote_player_animation(target_player, previous_position, next_position)
 
-	if not is_host_session and session_mode == "team":
+	if not is_host_session:
 		_apply_remote_mobs_snapshot(snapshot.get("mobs", []))
 		_apply_remote_foods_snapshot(snapshot.get("foods", []))
+
+
+func _host_entity_net_id(node: Node2D, is_mob: bool) -> String:
+	var instance_id := int(node.get_instance_id())
+	var table := host_mob_net_ids if is_mob else host_food_net_ids
+	if table.has(instance_id):
+		return String(table[instance_id])
+	var next_id := host_next_mob_net_id if is_mob else host_next_food_net_id
+	var generated := "%s%d" % ["m" if is_mob else "f", next_id]
+	table[instance_id] = generated
+	if is_mob:
+		host_next_mob_net_id += 1
+	else:
+		host_next_food_net_id += 1
+	return generated
+
+
+func _host_entity_net_id_gc(table: Dictionary, seen_instances: Dictionary) -> void:
+	var stale: Array = []
+	for instance_id in table.keys():
+		if seen_instances.has(instance_id):
+			continue
+		stale.append(instance_id)
+	for instance_id in stale:
+		table.erase(instance_id)
 
 
 func _apply_remote_mobs_snapshot(mobs_payload: Variant) -> void:
@@ -344,8 +382,8 @@ func _apply_remote_mobs_snapshot(mobs_payload: Variant) -> void:
 		if not (entry_var is Dictionary):
 			continue
 		var entry := entry_var as Dictionary
-		var mob_id := int(entry.get("id", 0))
-		if mob_id <= 0:
+		var mob_id := String(entry.get("id", "")).strip_edges()
+		if mob_id.is_empty():
 			continue
 		seen_ids[mob_id] = true
 		var mob_node: Node2D = null
@@ -390,8 +428,8 @@ func _apply_remote_foods_snapshot(foods_payload: Variant) -> void:
 		if not (entry_var is Dictionary):
 			continue
 		var entry := entry_var as Dictionary
-		var food_id := int(entry.get("id", 0))
-		if food_id <= 0:
+		var food_id := String(entry.get("id", "")).strip_edges()
+		if food_id.is_empty():
 			continue
 		seen_ids[food_id] = true
 		var food_node: Node2D = null
