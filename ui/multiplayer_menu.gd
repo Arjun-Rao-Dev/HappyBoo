@@ -174,7 +174,8 @@ func _update_roster_list(players: Dictionary) -> void:
 
 
 func _on_match_started(_mode: String) -> void:
-	get_tree().change_scene_to_file("res://survivors_game.tscn")
+	SettingsManager.queue_start_scene("res://survivors_game.tscn")
+	get_tree().change_scene_to_file("res://ui/control_scheme_prompt.tscn")
 
 
 func _on_host_disconnected(reason: String) -> void:

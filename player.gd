@@ -18,6 +18,7 @@ var _use_external_input := false
 var _external_input := Vector2.ZERO
 var _external_aim_position := Vector2.ZERO
 var _external_fire_pressed := false
+var _external_bomb_pressed := false
 var _actions_enabled := true
 
 @onready var bomb_scene: PackedScene = preload("res://bombs/bomb.tscn")
@@ -58,9 +59,11 @@ func _physics_process(_delta: float) -> void:
 				gun_node.set_external_aim_position(_external_aim_position)
 			if gun_node.has_method("set_external_fire_pressed"):
 				gun_node.set_external_fire_pressed(_external_fire_pressed)
-		_external_fire_pressed = false
 	if _actions_enabled:
 		_try_throw_bomb()
+	if _use_external_input:
+		_external_fire_pressed = false
+		_external_bomb_pressed = false
 	
 	if velocity.length() > 0.0:
 		$%HappyBoo.play_walk_animation()
@@ -170,12 +173,14 @@ func _update_health_bar_color() -> void:
 
 
 func _try_throw_bomb() -> void:
-	if not Input.is_action_just_pressed("throw_bomb"):
+	var wants_bomb := _external_bomb_pressed if _use_external_input else Input.is_action_just_pressed("throw_bomb")
+	if not wants_bomb:
 		return
 	if not can_throw_bomb():
 		return
 
-	var throw_direction := get_global_mouse_position() - global_position
+	var throw_target := _external_aim_position if _use_external_input else get_global_mouse_position()
+	var throw_direction := throw_target - global_position
 	if throw_direction.length() == 0.0:
 		throw_direction = Vector2.RIGHT
 
@@ -260,6 +265,10 @@ func set_external_aim_position(aim_position: Vector2) -> void:
 
 func set_external_fire_pressed(fire_pressed: bool) -> void:
 	_external_fire_pressed = fire_pressed
+
+
+func set_external_bomb_pressed(bomb_pressed: bool) -> void:
+	_external_bomb_pressed = bomb_pressed
 
 
 func set_actions_enabled(enabled: bool) -> void:

@@ -1,0 +1,35 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/mobile_controls.gd" id="1_jm12p"]
+
+[node name="MobileControls" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("1_jm12p")
+
+[node name="JoystickPad" type="TextureRect" parent="."]
+stretch_mode = 5
+mouse_filter = 2
+
+[node name="JoystickNub" type="TextureRect" parent="JoystickPad"]
+stretch_mode = 5
+mouse_filter = 2
+
+[node name="ShootButton" type="TextureRect" parent="."]
+stretch_mode = 5
+mouse_filter = 2
+
+[node name="Icon" type="TextureRect" parent="ShootButton"]
+stretch_mode = 5
+mouse_filter = 2
+
+[node name="BombButton" type="TextureRect" parent="."]
+stretch_mode = 5
+mouse_filter = 2
+
+[node name="Icon" type="TextureRect" parent="BombButton"]
+stretch_mode = 5
+mouse_filter = 2

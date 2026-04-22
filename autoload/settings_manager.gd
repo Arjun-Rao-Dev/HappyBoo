@@ -3,6 +3,8 @@ extends Node
 const SETTINGS_PATH := "user://settings.json"
 const SETTINGS_VERSION := 1
 const USERNAME_REGEX := "^[A-Za-z0-9_]{3,16}$"
+const CONTROL_SCHEME_KEYBOARD_MOUSE := "keyboard_mouse"
+const CONTROL_SCHEME_TOUCHSCREEN := "touchscreen"
 const TRACKED_ACTIONS: Array[StringName] = [
 	&"move_left",
 	&"move_right",
@@ -13,6 +15,7 @@ const TRACKED_ACTIONS: Array[StringName] = [
 ]
 
 var _settings_cache: Dictionary = {}
+var _pending_start_scene_path := "res://survivors_game.tscn"
 var _default_bindings: Dictionary = {
 	"move_left": KEY_A,
 	"move_right": KEY_D,
@@ -114,7 +117,8 @@ func get_settings_snapshot() -> Dictionary:
 		},
 		"controls": _extract_controls_snapshot(),
 		"profile": {
-			"username": get_username()
+			"username": get_username(),
+			"control_scheme": get_control_scheme()
 		}
 	}
 
@@ -126,6 +130,42 @@ func has_username() -> bool:
 func get_username() -> String:
 	var profile: Dictionary = _settings_cache.get("profile", {})
 	return String(profile.get("username", ""))
+
+
+func get_control_scheme() -> String:
+	var profile: Dictionary = _settings_cache.get("profile", {})
+	var scheme := String(profile.get("control_scheme", CONTROL_SCHEME_KEYBOARD_MOUSE))
+	if scheme != CONTROL_SCHEME_TOUCHSCREEN:
+		return CONTROL_SCHEME_KEYBOARD_MOUSE
+	return scheme
+
+
+func is_touchscreen_controls_enabled() -> bool:
+	return get_control_scheme() == CONTROL_SCHEME_TOUCHSCREEN
+
+
+func set_control_scheme(scheme: String) -> bool:
+	var normalized := CONTROL_SCHEME_TOUCHSCREEN if scheme == CONTROL_SCHEME_TOUCHSCREEN else CONTROL_SCHEME_KEYBOARD_MOUSE
+	var snapshot := get_settings_snapshot()
+	var profile: Dictionary = snapshot.get("profile", {})
+	profile["control_scheme"] = normalized
+	snapshot["profile"] = profile
+	apply_settings(snapshot)
+	return save_settings(snapshot)
+
+
+func queue_start_scene(path: String) -> void:
+	var trimmed := path.strip_edges()
+	if trimmed.is_empty():
+		_pending_start_scene_path = "res://survivors_game.tscn"
+		return
+	_pending_start_scene_path = trimmed
+
+
+func consume_start_scene() -> String:
+	var scene_path := _pending_start_scene_path
+	_pending_start_scene_path = "res://survivors_game.tscn"
+	return scene_path
 
 
 func set_username(name: String) -> bool:
@@ -185,7 +225,8 @@ func _default_settings() -> Dictionary:
 			"fullscreen": false
 		},
 		"profile": {
-			"username": ""
+			"username": "",
+			"control_scheme": CONTROL_SCHEME_KEYBOARD_MOUSE
 		},
 		"controls": _default_bindings.duplicate(true)
 	}

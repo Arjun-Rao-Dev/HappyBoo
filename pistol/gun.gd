@@ -13,6 +13,7 @@ signal projectile_fired(projectile_position: Vector2, projectile_rotation: float
 var detected_mobs: Array[Node2D] = []
 var _is_active := true
 var _external_control := false
+var _external_fire_held := false
 var _firing_enabled := true
 
 
@@ -31,6 +32,8 @@ func _process(_delta: float) -> void:
 
 func _on_fire_timer_timeout() -> void:
 	if not _firing_enabled:
+		return
+	if _external_control and not _external_fire_held:
 		return
 	_fire_projectile()
 
@@ -81,6 +84,8 @@ func set_active(active: bool) -> void:
 
 func set_external_control(enabled: bool) -> void:
 	_external_control = enabled
+	if not enabled:
+		_external_fire_held = false
 	if not _is_active:
 		fire_timer.stop()
 		return
@@ -103,8 +108,10 @@ func set_external_fire_pressed(fire_pressed: bool) -> void:
 		return
 	if not _external_control:
 		return
-	if fire_pressed:
+	if fire_pressed and not _external_fire_held:
 		_fire_projectile()
+		fire_timer.start()
+	_external_fire_held = fire_pressed
 
 
 func set_firing_enabled(enabled: bool) -> void:
