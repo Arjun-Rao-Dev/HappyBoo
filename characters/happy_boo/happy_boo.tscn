@@ -1,12 +1,12 @@
 [gd_scene format=3 uid="uid://pbmyh1qru7p"]
 
 [ext_resource type="Script" uid="uid://bj7buyff1tobm" path="res://characters/happy_boo/happy_boo.gd" id="1_kg7lb"]
-[ext_resource type="Texture2D" uid="uid://dk5b8a84a6n2h" path="res://characters/ground_shadow.png" id="2_62bos"]
-[ext_resource type="Texture2D" uid="uid://b3e4kkrfbvr1g" path="res://characters/happy_boo/square_foot.png" id="3_186qq"]
-[ext_resource type="Texture2D" uid="uid://cdfpnrd7unfym" path="res://characters/happy_boo/square_lower_leg.png" id="4_plnsd"]
-[ext_resource type="Texture2D" uid="uid://dgd62havw7eu8" path="res://characters/happy_boo/square_upper_leg.png" id="5_q2t1e"]
-[ext_resource type="Texture2D" uid="uid://c3r8eyeh2833v" path="res://characters/happy_boo/square_body.png" id="6_w3ck4"]
-[ext_resource type="Texture2D" uid="uid://c8nnwxs1l12em" path="res://characters/happy_boo/square_face.png" id="7_h5h8s"]
+[ext_resource type="Texture2D" uid="uid://cuu8v0ykykk0e" path="res://characters/ground_shadow.png" id="2_62bos"]
+[ext_resource type="Texture2D" uid="uid://dkkd0oujyj55c" path="res://characters/happy_boo/square_foot.png" id="3_186qq"]
+[ext_resource type="Texture2D" uid="uid://dp6pwrk477usw" path="res://characters/happy_boo/square_lower_leg.png" id="4_plnsd"]
+[ext_resource type="Texture2D" uid="uid://bkyrodw12ngp2" path="res://characters/happy_boo/square_upper_leg.png" id="5_q2t1e"]
+[ext_resource type="Texture2D" uid="uid://cftwdh5x1vmlg" path="res://characters/happy_boo/square_body.png" id="6_w3ck4"]
+[ext_resource type="Texture2D" uid="uid://cxd7poe6p8gvm" path="res://characters/happy_boo/square_face.png" id="7_h5h8s"]
 
 [sub_resource type="Animation" id="Animation_hed62"]
 length = 0.001

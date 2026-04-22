@@ -66,6 +66,8 @@ var remote_target_positions: Dictionary = {}
 var remote_target_gun_rotations: Dictionary = {}
 var snapshot_elapsed := 0.0
 var local_input_tick: int = 0
+var use_touchscreen_controls := false
+var touch_last_aim_direction := Vector2.RIGHT
 
 @onready var player = $Player
 @onready var player_scene: PackedScene = preload("res://player.tscn")
@@ -81,6 +83,7 @@ var local_input_tick: int = 0
 @onready var controls_hint_label: Label = $HUD/TopLeftPanel/Margin/VBox/ControlsHintLabel
 @onready var pause_menu = $PauseMenu
 @onready var crosshair = $Crosshair
+@onready var mobile_controls = $MobileControls
 @onready var game_music: AudioStreamPlayer = $GameMusic
 var hud_health_fill_style: StyleBoxFlat
 
@@ -90,14 +93,15 @@ func _ready() -> void:
 	_ensure_scene_defaults()
 	SettingsManager.load_settings()
 	_configure_session_state()
-	Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
+	use_touchscreen_controls = SettingsManager.is_touchscreen_controls_enabled()
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE if use_touchscreen_controls else Input.MOUSE_MODE_HIDDEN)
 	game_over_ui.visible = false
 	game_over_ui.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
 	game_over_label.text = "GAME OVER"
 	restart_button.visible = true
 	restart_button.text = "New Run"
 	quit_to_title_button.text = "Quit to Title"
-	crosshair.visible = true
+	crosshair.visible = not use_touchscreen_controls
 	if game_music.stream is AudioStreamMP3:
 		(game_music.stream as AudioStreamMP3).loop = true
 	if not game_music.finished.is_connected(_on_game_music_finished):
@@ -120,6 +124,10 @@ func _ready() -> void:
 	pause_menu.save_requested.connect(_on_pause_save_requested)
 	pause_menu.quit_to_title_requested.connect(_on_quit_to_title_pressed)
 	pause_menu.set_save_enabled(not is_multiplayer_session)
+	if mobile_controls != null and mobile_controls.has_method("reset_state"):
+		mobile_controls.reset_state()
+	mobile_controls.visible = use_touchscreen_controls
+	player.set_use_external_input(use_touchscreen_controls)
 
 	run_start_time_ms = Time.get_ticks_msec()
 	if not is_multiplayer_session:
@@ -148,7 +156,7 @@ func _setup_multiplayer_match() -> void:
 		return
 	if player.has_method("set_display_name"):
 		player.set_display_name(_username_for_peer(MultiplayerSession.local_peer_id))
-	player.set_actions_enabled(true)
+	player.set_actions_enabled(is_host_session)
 	_set_player_gun_firing_enabled(player, is_host_session)
 
 	if not MultiplayerSession.relay_input_received.is_connected(_on_network_input_received):
@@ -167,6 +175,44 @@ func _setup_multiplayer_match() -> void:
 	_sync_remote_players_from_roster()
 
 
+func _local_move_input_vector() -> Vector2:
+	if use_touchscreen_controls and mobile_controls != null and mobile_controls.visible:
+		return mobile_controls.get_move_vector()
+	return Input.get_vector("move_left", "move_right", "move_up", "move_down")
+
+
+func _local_aim_world_position() -> Vector2:
+	if use_touchscreen_controls and mobile_controls != null and mobile_controls.visible:
+		var aim_vector: Vector2 = mobile_controls.get_aim_vector()
+		if aim_vector.length() > 0.01:
+			touch_last_aim_direction = aim_vector.normalized()
+		return player.global_position + touch_last_aim_direction * 320.0
+	return get_global_mouse_position()
+
+
+func _local_fire_pressed() -> bool:
+	if use_touchscreen_controls and mobile_controls != null and mobile_controls.visible:
+		return mobile_controls.is_fire_pressed()
+	return false
+
+
+func _consume_local_bomb_pressed() -> bool:
+	if use_touchscreen_controls and mobile_controls != null and mobile_controls.visible:
+		return mobile_controls.consume_bomb_pressed()
+	return false
+
+
+func _update_touchscreen_player_input() -> void:
+	if not use_touchscreen_controls:
+		player.set_use_external_input(false)
+		return
+	player.set_use_external_input(true)
+	player.set_external_input_vector(_local_move_input_vector())
+	player.set_external_aim_position(_local_aim_world_position())
+	player.set_external_fire_pressed(_local_fire_pressed())
+	player.set_external_bomb_pressed(_consume_local_bomb_pressed())
+
+
 func _process_multiplayer(delta: float) -> void:
 	if not is_multiplayer_session:
 		return
@@ -181,6 +227,8 @@ func _process_multiplayer(delta: float) -> void:
 				remote_player.set_external_input_vector(move_input)
 				if remote_player.has_method("set_external_aim_position"):
 					remote_player.set_external_aim_position(aim_input)
+				if remote_player.has_method("set_external_fire_pressed"):
+					remote_player.set_external_fire_pressed(bool(input_frame.get("fire", true)))
 		snapshot_elapsed += delta
 		if snapshot_elapsed >= network_snapshot_interval:
 			snapshot_elapsed = 0.0
@@ -190,11 +238,12 @@ func _process_multiplayer(delta: float) -> void:
 		_check_pvp_winner()
 	else:
 		local_input_tick += 1
-		var input_vec := Input.get_vector("move_left", "move_right", "move_up", "move_down")
-		var aim_world := get_global_mouse_position()
+		var input_vec := _local_move_input_vector()
+		var aim_world := _local_aim_world_position()
 		MultiplayerSession.send_input({
 			"move": input_vec,
 			"aim": aim_world,
+			"fire": _local_fire_pressed() if use_touchscreen_controls else true,
 			"tick": local_input_tick
 		})
 
@@ -775,6 +824,7 @@ func _show_pvp_winner_screen(message: String) -> void:
 		return
 	get_tree().paused = true
 	crosshair.visible = false
+	mobile_controls.visible = false
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	game_music.stream_paused = true
 	game_over_ui.visible = true
@@ -922,6 +972,7 @@ func _physics_process(_delta: float) -> void:
 func _process(_delta: float) -> void:
 	if player == null:
 		return
+	_update_touchscreen_player_input()
 	bomb_cooldown_ui.set_state(
 		player.get_bomb_cooldown_remaining(),
 		player.get_bomb_cooldown_total(),
@@ -955,6 +1006,7 @@ func _apply_continue_state_if_present() -> void:
 func _open_pause_menu() -> void:
 	get_tree().paused = true
 	crosshair.visible = false
+	mobile_controls.visible = false
 	game_music.stream_paused = true
 	pause_menu.open_menu()
 
@@ -1062,6 +1114,7 @@ func _on_player_died() -> void:
 		return
 	game_over_ui.visible = true
 	crosshair.visible = false
+	mobile_controls.visible = false
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	game_music.stream_paused = true
 	get_tree().paused = true
@@ -1071,9 +1124,8 @@ func _on_player_died() -> void:
 func _on_restart_button_pressed() -> void:
 	get_tree().paused = false
 	SaveManager.clear_pending_continue_run()
-	Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
-	crosshair.visible = true
-	get_tree().reload_current_scene()
+	SettingsManager.queue_start_scene("res://survivors_game.tscn")
+	get_tree().change_scene_to_file("res://ui/control_scheme_prompt.tscn")
 
 
 func _on_quit_to_title_pressed() -> void:
@@ -1084,13 +1136,15 @@ func _on_quit_to_title_pressed() -> void:
 		MultiplayerSession.reset_to_single_player()
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	crosshair.visible = false
+	mobile_controls.visible = false
 	get_tree().change_scene_to_file("res://ui/title_menu.tscn")
 
 
 func _on_pause_resume_requested() -> void:
 	pause_menu.close_menu()
 	get_tree().paused = false
-	crosshair.visible = true
+	crosshair.visible = not use_touchscreen_controls
+	mobile_controls.visible = use_touchscreen_controls
 	game_music.stream_paused = false
 
 
@@ -1124,6 +1178,9 @@ func _update_score_label() -> void:
 
 
 func _update_controls_hint_label() -> void:
+	if use_touchscreen_controls:
+		controls_hint_label.text = "Move: Joystick | Shoot: Crosshair | Bomb: Fire Button"
+		return
 	var bomb_key := SettingsManager.get_action_binding_text(&"throw_bomb")
 	var pause_key := SettingsManager.get_action_binding_text(&"pause")
 	controls_hint_label.text = "Bomb: %s | Pause: %s" % [bomb_key, pause_key]

@@ -1,4 +1,4 @@
-[gd_scene format=3 uid="uid://swcb8q32cvqi"]
+[gd_scene load_steps=8 format=3 uid="uid://swcb8q32cvqi"]
 
 [ext_resource type="PackedScene" uid="uid://c1sx7bic4uhdj" path="res://player.tscn" id="1_3cish"]
 [ext_resource type="PackedScene" uid="uid://dq3r015sr1uql" path="res://pine_tree.tscn" id="2_y3pti"]
@@ -7,6 +7,7 @@
 [ext_resource type="PackedScene" path="res://ui/pause_menu.tscn" id="6_ky5ah"]
 [ext_resource type="PackedScene" path="res://ui/crosshair.tscn" id="7_lvy0n"]
 [ext_resource type="AudioStream" uid="uid://eb5fms7tiejo" path="res://music/in_game_music.mp3" id="8_h4d9a"]
+[ext_resource type="PackedScene" path="res://ui/mobile_controls.tscn" id="9_touch"]
 
 [node name="Game" type="Node2D" unique_id=1115577214]
 y_sort_enabled = true
@@ -96,6 +97,8 @@ autowrap_mode = 3
 [node name="PauseMenu" parent="." unique_id=481937668 instance=ExtResource("6_ky5ah")]
 
 [node name="Crosshair" parent="." unique_id=1621588781 instance=ExtResource("7_lvy0n")]
+
+[node name="MobileControls" parent="." instance=ExtResource("9_touch")]
 
 [node name="GameMusic" type="AudioStreamPlayer" parent="." unique_id=1075617433]
 stream = ExtResource("8_h4d9a")

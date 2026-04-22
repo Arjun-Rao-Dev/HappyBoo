@@ -16,6 +16,7 @@ const DEFAULT_HOST := "127.0.0.1"
 const HOST_PORT_SCAN_SPAN := 50
 const DEFAULT_RELAY_URL := "wss://happyboo-relay-production.up.railway.app"
 const LOCAL_DEBUG_RELAY_URL := "ws://127.0.0.1:8080"
+const RELAY_DISCONNECT_GRACE_SECONDS := 1.2
 
 enum TransportMode {
 	NONE,
@@ -39,6 +40,7 @@ var _relay_was_connected := false
 var _relay_join_pending := false
 var _relay_create_pending := false
 var _relay_outbox: Array[String] = []
+var _relay_disconnect_started_at := -1.0
 
 
 func _ready() -> void:
@@ -47,6 +49,11 @@ func _ready() -> void:
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
 	multiplayer.connection_failed.connect(_on_connection_failed)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
+
+
+func _mp_debug(message: String) -> void:
+	if OS.is_debug_build():
+		print("[MultiplayerSession] %s" % message)
 
 
 func _process(_delta: float) -> void:
@@ -181,6 +188,7 @@ func host_web_relay(relay_url: String, max_players: int = MAX_PLAYERS) -> int:
 	_relay_create_pending = true
 	_relay_join_pending = false
 	_relay_was_connected = false
+	_relay_disconnect_started_at = -1.0
 	var normalized_max := clampi(max_players, 2, MAX_PLAYERS)
 	emit_signal("status_changed", "Connecting to relay host...")
 	_queue_relay_message({
@@ -221,6 +229,7 @@ func join_web_relay(relay_url: String, target_room_code: String) -> int:
 	_relay_create_pending = false
 	_relay_join_pending = true
 	_relay_was_connected = false
+	_relay_disconnect_started_at = -1.0
 	emit_signal("status_changed", "Connecting to relay and joining %s..." % room_code)
 	_queue_relay_message({
 		"type": "join_room",
@@ -243,6 +252,7 @@ func leave_session() -> void:
 	_relay_create_pending = false
 	_relay_join_pending = false
 	_relay_was_connected = false
+	_relay_disconnect_started_at = -1.0
 	_relay_outbox.clear()
 	_enet_peer = null
 	transport_mode = TransportMode.NONE
@@ -313,9 +323,11 @@ func _poll_relay() -> void:
 	_relay_peer.poll()
 	var state := _relay_peer.get_ready_state()
 	if state == WebSocketPeer.STATE_OPEN:
+		_relay_disconnect_started_at = -1.0
 		if not _relay_was_connected:
 			_relay_was_connected = true
 			emit_signal("connection_changed", true)
+			_mp_debug("relay open room=%s host=%s" % [room_code, str(is_host)])
 			if _relay_create_pending:
 				emit_signal("status_changed", "Creating relay room...")
 			elif _relay_join_pending:
@@ -327,6 +339,13 @@ func _poll_relay() -> void:
 			_handle_relay_packet(text)
 		return
 	if state == WebSocketPeer.STATE_CONNECTING:
+		return
+	if _relay_disconnect_started_at < 0.0:
+		_relay_disconnect_started_at = Time.get_ticks_msec() / 1000.0
+		_mp_debug("relay non-open state=%d (grace start)" % state)
+		return
+	var elapsed := (Time.get_ticks_msec() / 1000.0) - _relay_disconnect_started_at
+	if elapsed < RELAY_DISCONNECT_GRACE_SECONDS:
 		return
 	if _relay_was_connected:
 		_handle_relay_disconnect("Relay disconnected.")
@@ -364,6 +383,7 @@ func _handle_relay_packet(packet_text: String) -> void:
 		"roster":
 			_apply_relay_roster(message.get("players", {}))
 		"match_started":
+			_mp_debug("match_started mode=%s room=%s" % [String(message.get("mode", mode)), room_code])
 			_on_match_started(String(message.get("mode", mode)))
 		"relay_input":
 			var sender_id := int(message.get("peer_id", 0))
@@ -380,6 +400,7 @@ func _handle_relay_packet(packet_text: String) -> void:
 				emit_signal("relay_event_received", event_payload)
 		"host_disconnected":
 			var reason := String(message.get("reason", "Host disconnected."))
+			_mp_debug("host_disconnected reason=%s" % reason)
 			emit_signal("host_disconnected", reason)
 			leave_session()
 		"error":
@@ -421,6 +442,7 @@ func _flush_relay_outbox() -> void:
 func _handle_relay_disconnect(reason: String) -> void:
 	if not is_multiplayer:
 		return
+	_mp_debug("disconnect reason=%s room=%s was_connected=%s" % [reason, room_code, str(_relay_was_connected)])
 	emit_signal("host_disconnected", reason)
 	leave_session()
 

@@ -37,19 +37,22 @@ func _refresh_continue_state() -> void:
 
 func _on_new_run_pressed() -> void:
 	SaveManager.clear_pending_continue_run()
-	get_tree().change_scene_to_file("res://survivors_game.tscn")
+	SettingsManager.queue_start_scene("res://survivors_game.tscn")
+	get_tree().change_scene_to_file("res://ui/control_scheme_prompt.tscn")
 
 
 func _on_continue_pressed() -> void:
 	var result := SaveManager.load_run()
 	if bool(result.get("ok", false)):
 		SaveManager.queue_continue_run(result.get("run_state", {}))
-		get_tree().change_scene_to_file("res://survivors_game.tscn")
+		SettingsManager.queue_start_scene("res://survivors_game.tscn")
+		get_tree().change_scene_to_file("res://ui/control_scheme_prompt.tscn")
 		return
 
 	status_label.text = "Continue failed (%s). Starting a new run." % String(result.get("status", "error"))
 	SaveManager.clear_pending_continue_run()
-	get_tree().change_scene_to_file("res://survivors_game.tscn")
+	SettingsManager.queue_start_scene("res://survivors_game.tscn")
+	get_tree().change_scene_to_file("res://ui/control_scheme_prompt.tscn")
 
 
 func _on_options_pressed() -> void:
