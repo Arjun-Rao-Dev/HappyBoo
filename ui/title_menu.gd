@@ -6,12 +6,15 @@ const KenneyUI = preload("res://ui/kenney_ui.gd")
 @onready var panel: PanelContainer = $CenterContainer/Panel
 @onready var game_title: Label = $CenterContainer/Panel/Margin/VBox/GameTitle
 @onready var subtitle: Label = $CenterContainer/Panel/Margin/VBox/Subtitle
+@onready var coins_label: Label = $CenterContainer/Panel/Margin/VBox/CoinsLabel
 @onready var continue_button: Button = $CenterContainer/Panel/Margin/VBox/ContinueButton
+@onready var store_button: Button = $CenterContainer/Panel/Margin/VBox/StoreButton
 @onready var options_button: Button = $CenterContainer/Panel/Margin/VBox/OptionsButton
 @onready var new_run_button: Button = $CenterContainer/Panel/Margin/VBox/NewRunButton
 @onready var quit_button: Button = $CenterContainer/Panel/Margin/VBox/QuitButton
 @onready var status_label: Label = $CenterContainer/Panel/Margin/VBox/StatusLabel
 @onready var options_panel = $OptionsPanel
+@onready var store_panel = $StorePanel
 
 
 func _ready() -> void:
@@ -20,10 +23,12 @@ func _ready() -> void:
 	SettingsManager.load_settings()
 	_apply_kenney_style()
 	continue_button.pressed.connect(_on_continue_pressed)
+	store_button.pressed.connect(_on_store_pressed)
 	options_button.pressed.connect(_on_options_pressed)
 	new_run_button.pressed.connect(_on_new_run_pressed)
 	quit_button.pressed.connect(_on_quit_pressed)
 	options_panel.closed.connect(_on_options_closed)
+	store_panel.closed.connect(_on_store_closed)
 	_refresh_continue_state()
 	if continue_button.disabled:
 		new_run_button.grab_focus()
@@ -36,14 +41,17 @@ func _apply_kenney_style() -> void:
 	KenneyUI.apply_panel(panel, "Red")
 	KenneyUI.apply_title_label(game_title, 44)
 	KenneyUI.apply_body_label(subtitle, 18)
+	KenneyUI.apply_heading(coins_label, 18)
 	KenneyUI.apply_primary_button(new_run_button)
 	KenneyUI.apply_info_button(continue_button)
+	KenneyUI.apply_yellow_button(store_button)
 	KenneyUI.apply_secondary_button(options_button)
 	KenneyUI.apply_danger_button(quit_button)
 	KenneyUI.apply_body_label(status_label, 16)
 
 
 func _refresh_continue_state() -> void:
+	coins_label.text = "Coins: %d" % SettingsManager.get_coin_balance()
 	var can_continue := SaveManager.has_save()
 	continue_button.disabled = not can_continue
 	if can_continue:
@@ -70,11 +78,22 @@ func _on_continue_pressed() -> void:
 
 
 func _on_options_pressed() -> void:
+	store_panel.hide_panel()
 	options_panel.show_panel()
+
+
+func _on_store_pressed() -> void:
+	options_panel.hide_panel()
+	store_panel.show_panel()
 
 
 func _on_options_closed() -> void:
 	options_panel.hide_panel()
+	_refresh_continue_state()
+
+
+func _on_store_closed() -> void:
+	store_panel.hide_panel()
 	_refresh_continue_state()
 
 

@@ -24,6 +24,7 @@ const TREE_ROTATION_VARIATION := 0.08
 const TUTORIAL_KEYBOARD_STEPS: Array[String] = [
 	"Use WASD or the arrow keys to move around the map.",
 	"Aim with the mouse. Your pistol auto-fires every 0.5 seconds once the headstart ends.",
+	"Pick up food to heal 20 health. Staying healthy also lets you use bombs.",
 	"Bombs only work at full health. Press Z to throw one toward your cursor.",
 	"Goal: stay alive, clear slimes, and keep your score climbing."
 ]
@@ -31,6 +32,7 @@ const TUTORIAL_KEYBOARD_STEPS: Array[String] = [
 var spawned_chunks: Dictionary = {}
 var score: int = 0
 var run_start_time_ms: int = 0
+var coins_awarded_this_run := false
 var tutorial_active := false
 var tutorial_steps: Array[String] = []
 var tutorial_step_index := 0
@@ -38,6 +40,7 @@ var tutorial_step_index := 0
 @onready var player = $Player
 @onready var game_over_ui: CanvasLayer = $GameOverUI
 @onready var game_over_label: Label = $GameOverUI/GameOverPanel/CenterBox/VBoxContainer/GameOverLabel
+@onready var game_over_rewards_label: Label = $GameOverUI/GameOverPanel/CenterBox/VBoxContainer/RewardsLabel
 @onready var restart_button: Button = $GameOverUI/GameOverPanel/CenterBox/VBoxContainer/RestartButton
 @onready var quit_to_title_button: Button = $GameOverUI/GameOverPanel/CenterBox/VBoxContainer/QuitToTitleButton
 @onready var score_label: Label = $HUD/TopLeftPanel/Margin/VBox/ScoreLabel
@@ -294,7 +297,13 @@ func _chunk_rng(chunk: Vector2i, salt: String) -> RandomNumberGenerator:
 func _on_player_died() -> void:
 	tutorial_ui.visible = false
 	tutorial_active = false
+	var earned_coins := _award_death_coins()
 	game_over_ui.visible = true
+	game_over_rewards_label.text = "Score: %d\nCoins earned: %d\nTotal coins: %d" % [
+		score,
+		earned_coins,
+		SettingsManager.get_coin_balance()
+	]
 	crosshair.visible = false
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	game_music.stream_paused = true
@@ -346,6 +355,15 @@ func _on_player_health_changed(current: float, maximum: float) -> void:
 func add_score(points: int = 1) -> void:
 	score += points
 	_update_score_label()
+
+
+func _award_death_coins() -> int:
+	if coins_awarded_this_run:
+		return 0
+	coins_awarded_this_run = true
+	var earned := maxi(score, 0)
+	SettingsManager.add_coins(earned)
+	return earned
 
 
 func _update_score_label() -> void:

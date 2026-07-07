@@ -3,6 +3,7 @@ extends Node
 const SETTINGS_PATH := "user://settings.json"
 const SETTINGS_VERSION := 1
 const USERNAME_REGEX := "^[A-Za-z0-9_]{3,16}$"
+const DEFAULT_SKIN_ID := "classic"
 const TRACKED_ACTIONS: Array[StringName] = [
 	&"move_left",
 	&"move_right",
@@ -131,6 +132,98 @@ func is_tutorial_completed() -> bool:
 	return bool(profile.get("tutorial_completed", false))
 
 
+func get_coin_balance() -> int:
+	var profile: Dictionary = _settings_cache.get("profile", {})
+	return maxi(int(profile.get("coins", 0)), 0)
+
+
+func add_coins(amount: int) -> int:
+	var earned := maxi(amount, 0)
+	var snapshot := get_settings_snapshot()
+	var profile: Dictionary = snapshot.get("profile", {})
+	var next_balance := maxi(int(profile.get("coins", 0)), 0) + earned
+	profile["coins"] = next_balance
+	snapshot["profile"] = profile
+	apply_settings(snapshot)
+	save_settings(snapshot)
+	return next_balance
+
+
+func spend_coins(amount: int) -> bool:
+	var cost := maxi(amount, 0)
+	if get_coin_balance() < cost:
+		return false
+	var snapshot := get_settings_snapshot()
+	var profile: Dictionary = snapshot.get("profile", {})
+	profile["coins"] = maxi(int(profile.get("coins", 0)), 0) - cost
+	snapshot["profile"] = profile
+	apply_settings(snapshot)
+	return save_settings(snapshot)
+
+
+func get_owned_skins() -> Array[String]:
+	var profile: Dictionary = _settings_cache.get("profile", {})
+	var raw_skins: Variant = profile.get("owned_skins", [DEFAULT_SKIN_ID])
+	var owned: Array[String] = []
+	if raw_skins is Array:
+		for skin in raw_skins:
+			var skin_id := String(skin).strip_edges()
+			if skin_id.is_empty() or owned.has(skin_id):
+				continue
+			owned.append(skin_id)
+	if not owned.has(DEFAULT_SKIN_ID):
+		owned.append(DEFAULT_SKIN_ID)
+	return owned
+
+
+func is_skin_owned(skin_id: String) -> bool:
+	return get_owned_skins().has(skin_id)
+
+
+func get_equipped_skin() -> String:
+	var profile: Dictionary = _settings_cache.get("profile", {})
+	var skin_id := String(profile.get("equipped_skin", DEFAULT_SKIN_ID)).strip_edges()
+	if skin_id.is_empty() or not is_skin_owned(skin_id):
+		return DEFAULT_SKIN_ID
+	return skin_id
+
+
+func buy_skin(skin_id: String, cost: int) -> Dictionary:
+	var normalized := skin_id.strip_edges()
+	if normalized.is_empty():
+		return {"ok": false, "status": "invalid_skin"}
+	if is_skin_owned(normalized):
+		return {"ok": true, "status": "already_owned"}
+	var price := maxi(cost, 0)
+	if get_coin_balance() < price:
+		return {"ok": false, "status": "not_enough_coins"}
+
+	var snapshot := get_settings_snapshot()
+	var profile: Dictionary = snapshot.get("profile", {})
+	profile["coins"] = maxi(int(profile.get("coins", 0)), 0) - price
+	var owned := get_owned_skins()
+	owned.append(normalized)
+	profile["owned_skins"] = owned
+	profile["equipped_skin"] = normalized
+	snapshot["profile"] = profile
+	apply_settings(snapshot)
+	if not save_settings(snapshot):
+		return {"ok": false, "status": "save_failed"}
+	return {"ok": true, "status": "bought"}
+
+
+func equip_skin(skin_id: String) -> bool:
+	var normalized := skin_id.strip_edges()
+	if not is_skin_owned(normalized):
+		return false
+	var snapshot := get_settings_snapshot()
+	var profile: Dictionary = snapshot.get("profile", {})
+	profile["equipped_skin"] = normalized
+	snapshot["profile"] = profile
+	apply_settings(snapshot)
+	return save_settings(snapshot)
+
+
 func mark_tutorial_completed(completed: bool = true) -> bool:
 	var snapshot := get_settings_snapshot()
 	var profile: Dictionary = snapshot.get("profile", {})
@@ -202,6 +295,9 @@ func _default_settings() -> Dictionary:
 		},
 		"profile": {
 			"username": "",
+			"coins": 0,
+			"owned_skins": [DEFAULT_SKIN_ID],
+			"equipped_skin": DEFAULT_SKIN_ID,
 			"tutorial_completed": false
 		},
 		"controls": _default_bindings.duplicate(true)
@@ -259,6 +355,9 @@ func _extract_controls_snapshot() -> Dictionary:
 func _extract_profile_snapshot() -> Dictionary:
 	return {
 		"username": get_username(),
+		"coins": get_coin_balance(),
+		"owned_skins": get_owned_skins(),
+		"equipped_skin": get_equipped_skin(),
 		"tutorial_completed": is_tutorial_completed()
 	}
 
