@@ -18,6 +18,7 @@ var is_host := false
 var _socket := WebSocketPeer.new()
 var _online_run_requested := false
 var _has_joined_room := false
+var _room_full := false
 
 
 func _process(_delta: float) -> void:
@@ -50,6 +51,7 @@ func connect_to_server(url: String = server_url, room: String = room_id) -> void
 	local_player_id = ""
 	is_host = false
 	_has_joined_room = false
+	_room_full = false
 	_socket = WebSocketPeer.new()
 	var error := _socket.connect_to_url(server_url)
 	if error != OK:
@@ -64,6 +66,7 @@ func disconnect_from_server() -> void:
 	local_player_id = ""
 	is_host = false
 	_has_joined_room = false
+	_room_full = false
 	emit_signal("host_status_changed", is_host)
 	_set_connection_status("Disconnected")
 
@@ -89,17 +92,22 @@ func _update_socket_status() -> void:
 		WebSocketPeer.STATE_CONNECTING:
 			_set_connection_status("Connecting")
 		WebSocketPeer.STATE_OPEN:
-			_set_connection_status("Online")
 			if not _has_joined_room:
+				_set_connection_status("Connecting")
 				_send_json({
 					"type": "join",
 					"room_id": room_id
 				})
 				_has_joined_room = true
+			else:
+				_set_connection_status("Online")
 		WebSocketPeer.STATE_CLOSING:
 			_set_connection_status("Disconnected")
 		WebSocketPeer.STATE_CLOSED:
-			_set_connection_status("Disconnected")
+			if _room_full:
+				_set_connection_status(connection_status)
+			else:
+				_set_connection_status("Disconnected")
 
 
 func _handle_packet(raw_text: String) -> void:
@@ -115,6 +123,11 @@ func _handle_packet(raw_text: String) -> void:
 		"host_assigned":
 			is_host = bool(message.get("is_host", false))
 			emit_signal("host_status_changed", is_host)
+		"joined":
+			_set_connection_status("Online")
+		"room_full":
+			_room_full = true
+			_set_connection_status("Room Full (%d max)" % int(message.get("max_players", 4)))
 		"player_state":
 			var player_id := String(message.get("from_player_id", ""))
 			if player_id.is_empty() or player_id == local_player_id:

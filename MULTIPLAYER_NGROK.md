@@ -70,5 +70,6 @@ var multiplayer_url := "wss://example.ngrok-free.app"
 
 - The `happy-boo-server` container listens on port `8080`.
 - The `ngrok` container exposes that server publicly.
-- The current relay supports rooms, join messages, ping/pong, and broadcasting JSON messages to other players in the same room.
+- Rooms currently allow 4 players max. Change `MAX_PLAYERS_PER_ROOM` in `compose.yaml` to adjust this for local testing.
+- The current relay supports rooms, host assignment, join messages, ping/pong, and broadcasting JSON messages to other players in the same room.
 - The ngrok URL can change unless your ngrok account has a reserved/static domain.

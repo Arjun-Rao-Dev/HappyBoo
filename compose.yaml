@@ -5,6 +5,7 @@ services:
     container_name: happy-boo-server
     environment:
       PORT: "8080"
+      MAX_PLAYERS_PER_ROOM: "4"
     ports:
       - "8080:8080"
 

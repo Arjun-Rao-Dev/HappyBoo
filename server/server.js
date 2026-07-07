@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const { WebSocketServer } = require("ws");
 
 const port = Number.parseInt(process.env.PORT || "8080", 10);
+const maxPlayersPerRoom = Number.parseInt(process.env.MAX_PLAYERS_PER_ROOM || "4", 10);
 const rooms = new Map();
 
 const server = http.createServer((req, res) => {
@@ -21,7 +22,9 @@ const wss = new WebSocketServer({ server });
 wss.on("connection", (socket) => {
   socket.playerId = crypto.randomUUID();
   socket.roomId = "lobby";
-  joinRoom(socket, socket.roomId);
+  if (!joinRoom(socket, socket.roomId)) {
+    return;
+  }
 
   send(socket, {
     type: "welcome",
@@ -40,6 +43,14 @@ wss.on("connection", (socket) => {
 
     if (message.type === "join") {
       const nextRoom = sanitizeRoomId(message.room_id || message.room || "lobby");
+      if (!canJoinRoom(socket, nextRoom)) {
+        send(socket, {
+          type: "room_full",
+          room_id: nextRoom,
+          max_players: maxPlayersPerRoom
+        });
+        return;
+      }
       leaveRoom(socket);
       socket.roomId = nextRoom;
       joinRoom(socket, nextRoom);
@@ -88,8 +99,23 @@ function joinRoom(socket, roomId) {
   if (!rooms.has(roomId)) {
     rooms.set(roomId, new Set());
   }
+  if (!canJoinRoom(socket, roomId)) {
+    send(socket, {
+      type: "room_full",
+      room_id: roomId,
+      max_players: maxPlayersPerRoom
+    });
+    socket.close(1008, "Room full");
+    return false;
+  }
   rooms.get(roomId).add(socket);
   assignHost(roomId);
+  return true;
+}
+
+function canJoinRoom(socket, roomId) {
+  const room = rooms.get(roomId);
+  return !room || room.has(socket) || room.size < maxPlayersPerRoom;
 }
 
 function leaveRoom(socket) {
@@ -146,5 +172,5 @@ function send(socket, message) {
 }
 
 server.listen(port, "0.0.0.0", () => {
-  console.log(`Happy Boo multiplayer server listening on port ${port}`);
+  console.log(`Happy Boo multiplayer server listening on port ${port} with max ${maxPlayersPerRoom} players per room`);
 });
