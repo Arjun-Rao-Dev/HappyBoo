@@ -1,5 +1,8 @@
 extends Node2D
 
+const REMOTE_PLAYER_SCENE: PackedScene = preload("res://multiplayer/remote_player.tscn")
+const MULTIPLAYER_STATE_SEND_INTERVAL := 0.08
+
 @export var tree_scene: PackedScene = preload("res://pine_tree.tscn")
 @export var mob_scene: PackedScene = preload("res://slime.tscn")
 @export var medium_monster_scene: PackedScene = preload("res://monsters/monster_bee.tscn")
@@ -37,6 +40,9 @@ var coins_awarded_this_run := false
 var tutorial_active := false
 var tutorial_steps: Array[String] = []
 var tutorial_step_index := 0
+var online_run := false
+var multiplayer_send_accumulator := 0.0
+var remote_players: Dictionary = {}
 
 @onready var player = $Player
 @onready var game_over_ui: CanvasLayer = $GameOverUI
@@ -48,6 +54,7 @@ var tutorial_step_index := 0
 @onready var bomb_cooldown_ui = $HUD/TopLeftPanel/Margin/VBox/BombRow/BombCooldownUI
 @onready var health_bar: ProgressBar = $HUD/TopLeftPanel/Margin/VBox/HealthBar
 @onready var controls_hint_label: Label = $HUD/TopLeftPanel/Margin/VBox/ControlsHintLabel
+@onready var multiplayer_status_label: Label = $HUD/TopLeftPanel/Margin/VBox/MultiplayerStatusLabel
 @onready var pause_menu = $PauseMenu
 @onready var crosshair = $Crosshair
 @onready var game_music: AudioStreamPlayer = $GameMusic
@@ -103,6 +110,7 @@ func _ready() -> void:
 	_update_score_label()
 	_on_player_health_changed(player.get_current_health(), player.get_max_health())
 	_update_controls_hint_label()
+	_setup_multiplayer_if_requested()
 	_maybe_start_first_run_tutorial()
 	_spawn_trees_around_player()
 
@@ -153,6 +161,14 @@ func _on_tutorial_skip_pressed() -> void:
 
 func _exit_tree() -> void:
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	if online_run:
+		if MultiplayerClient.remote_player_state_received.is_connected(_on_remote_player_state_received):
+			MultiplayerClient.remote_player_state_received.disconnect(_on_remote_player_state_received)
+		if MultiplayerClient.remote_player_left.is_connected(_on_remote_player_left):
+			MultiplayerClient.remote_player_left.disconnect(_on_remote_player_left)
+		if MultiplayerClient.connection_status_changed.is_connected(_on_multiplayer_connection_status_changed):
+			MultiplayerClient.connection_status_changed.disconnect(_on_multiplayer_connection_status_changed)
+		MultiplayerClient.disconnect_from_server()
 
 
 func _physics_process(_delta: float) -> void:
@@ -169,6 +185,7 @@ func _process(_delta: float) -> void:
 		player.is_full_health()
 	)
 	_update_controls_hint_label()
+	_process_multiplayer_state(_delta)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -321,6 +338,8 @@ func _on_restart_button_pressed() -> void:
 
 func _on_quit_to_title_pressed() -> void:
 	get_tree().paused = false
+	if online_run:
+		MultiplayerClient.disconnect_from_server()
 	SaveManager.clear_pending_continue_run()
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	crosshair.visible = false
@@ -379,6 +398,68 @@ func _update_controls_hint_label() -> void:
 	var bomb_key := SettingsManager.get_action_binding_text(&"throw_bomb")
 	var pause_key := SettingsManager.get_action_binding_text(&"pause")
 	controls_hint_label.text = "Aim: Mouse | Bomb: %s | Pause: %s" % [bomb_key, pause_key]
+
+
+func _setup_multiplayer_if_requested() -> void:
+	online_run = MultiplayerClient.consume_online_run_requested()
+	multiplayer_status_label.visible = online_run
+	if not online_run:
+		return
+
+	MultiplayerClient.remote_player_state_received.connect(_on_remote_player_state_received)
+	MultiplayerClient.remote_player_left.connect(_on_remote_player_left)
+	MultiplayerClient.connection_status_changed.connect(_on_multiplayer_connection_status_changed)
+	_on_multiplayer_connection_status_changed(MultiplayerClient.connection_status)
+	MultiplayerClient.connect_to_server()
+
+
+func _process_multiplayer_state(delta: float) -> void:
+	if not online_run:
+		return
+	multiplayer_send_accumulator += delta
+	if multiplayer_send_accumulator < MULTIPLAYER_STATE_SEND_INTERVAL:
+		return
+	multiplayer_send_accumulator = 0.0
+	MultiplayerClient.send_player_state(_build_local_player_state())
+
+
+func _build_local_player_state() -> Dictionary:
+	var animation_state := "walk" if player.velocity.length() > 1.0 else "idle"
+	return {
+		"position": {
+			"x": player.global_position.x,
+			"y": player.global_position.y
+		},
+		"velocity": {
+			"x": player.velocity.x,
+			"y": player.velocity.y
+		},
+		"username": SettingsManager.get_username(),
+		"skin_id": SettingsManager.get_equipped_skin(),
+		"animation": animation_state
+	}
+
+
+func _on_remote_player_state_received(player_id: String, state: Dictionary) -> void:
+	var remote_player: Node2D = remote_players.get(player_id, null)
+	if remote_player == null:
+		remote_player = REMOTE_PLAYER_SCENE.instantiate()
+		remote_player.name = "RemotePlayer_%s" % player_id.substr(0, 8)
+		add_child(remote_player)
+		remote_players[player_id] = remote_player
+	if remote_player.has_method("apply_state"):
+		remote_player.apply_state(state)
+
+
+func _on_remote_player_left(player_id: String) -> void:
+	var remote_player: Node = remote_players.get(player_id, null)
+	if remote_player != null:
+		remote_player.queue_free()
+	remote_players.erase(player_id)
+
+
+func _on_multiplayer_connection_status_changed(status: String) -> void:
+	multiplayer_status_label.text = "Multiplayer: %s" % status
 
 
 func _update_hud_health_bar_color(current: float, maximum: float) -> void:

@@ -1,0 +1,32 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://multiplayer/remote_player.gd" id="1_remote"]
+[ext_resource type="PackedScene" path="res://characters/happy_boo/happy_boo.tscn" id="2_boo"]
+
+[node name="RemotePlayer" type="Node2D"]
+y_sort_enabled = true
+modulate = Color(1, 1, 1, 0.82)
+script = ExtResource("1_remote")
+
+[node name="HappyBoo" parent="." instance=ExtResource("2_boo")]
+scale = Vector2(0.92, 0.92)
+
+[node name="UsernameBackdrop" type="ColorRect" parent="."]
+offset_left = -128.0
+offset_top = -150.0
+offset_right = 128.0
+offset_bottom = -118.0
+mouse_filter = 2
+color = Color(0, 0, 0, 0.42)
+
+[node name="UsernameLabel" type="Label" parent="."]
+offset_left = -120.0
+offset_top = -145.0
+offset_right = 120.0
+offset_bottom = -123.0
+theme_override_colors/font_color = Color(0.8, 0.92, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 20
+text = "Player"
+horizontal_alignment = 1
