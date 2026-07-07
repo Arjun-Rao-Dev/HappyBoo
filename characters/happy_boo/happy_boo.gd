@@ -29,6 +29,13 @@ const SKIN_TEXTURES := {
 		"foot": "res://characters/happy_boo/skins/gold/square_foot.png",
 		"lower_leg": "res://characters/happy_boo/skins/gold/square_lower_leg.png",
 		"upper_leg": "res://characters/happy_boo/skins/gold/square_upper_leg.png"
+	},
+	"sappy": {
+		"body": "res://characters/happy_boo/skins/sappy/square_body.png",
+		"face": "res://characters/happy_boo/skins/sappy/square_face.png",
+		"foot": "res://characters/happy_boo/skins/sappy/square_foot.png",
+		"lower_leg": "res://characters/happy_boo/skins/sappy/square_lower_leg.png",
+		"upper_leg": "res://characters/happy_boo/skins/sappy/square_upper_leg.png"
 	}
 }
 
