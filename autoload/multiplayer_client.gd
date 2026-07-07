@@ -137,7 +137,7 @@ func _handle_packet(raw_text: String) -> void:
 			var player_id := String(message.get("player_id", ""))
 			if not player_id.is_empty() and player_id != local_player_id:
 				emit_signal("remote_player_left", player_id)
-		"world_spawn", "world_snapshot", "mob_state", "mob_died", "food_collect", "food_collected", "projectile_hit", "projectile_fired", "bomb_exploded", "player_joined":
+		"world_spawn", "world_snapshot", "mob_state", "mob_died", "food_collect", "food_collected", "projectile_hit", "projectile_fired", "bomb_exploded", "chat_message", "player_joined":
 			emit_signal("world_message_received", message)
 
 

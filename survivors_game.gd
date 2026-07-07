@@ -6,6 +6,10 @@ const MUZZLE_FLASH_SCENE: PackedScene = preload("res://pistol/muzzle_flash/muzzl
 const MULTIPLAYER_STATE_SEND_INTERVAL := 0.05
 const MULTIPLAYER_MOB_STATE_SEND_INTERVAL := 0.12
 const ONLINE_MOB_SPAWN_CHANCE_PER_CHUNK := 0.75
+const CHAT_MAX_LENGTH := 120
+const CHAT_MAX_VISIBLE_MESSAGES := 6
+const CHAT_MESSAGE_VISIBLE_SECONDS := 8.0
+const CHAT_SEND_COOLDOWN_SECONDS := 0.5
 
 @export var tree_scene: PackedScene = preload("res://pine_tree.tscn")
 @export var mob_scene: PackedScene = preload("res://slime.tscn")
@@ -55,6 +59,12 @@ var network_foods: Dictionary = {}
 var online_host_entity_chunks: Dictionary = {}
 var next_network_mob_id := 1
 var next_network_food_id := 1
+var chat_messages: Array[Dictionary] = []
+var chat_input_active := false
+var chat_send_cooldown := 0.0
+var chat_panel: PanelContainer
+var chat_log_label: Label
+var chat_input: LineEdit
 
 @onready var player = $Player
 @onready var game_over_ui: CanvasLayer = $GameOverUI
@@ -116,6 +126,7 @@ func _ready() -> void:
 	pause_menu.set_save_enabled(true)
 	tutorial_next_button.pressed.connect(_on_tutorial_next_pressed)
 	tutorial_skip_button.pressed.connect(_on_tutorial_skip_pressed)
+	_build_chat_ui()
 
 	run_start_time_ms = Time.get_ticks_msec()
 	_apply_continue_state_if_present()
@@ -202,9 +213,13 @@ func _process(_delta: float) -> void:
 	)
 	_update_controls_hint_label()
 	_process_multiplayer_state(_delta)
+	_process_chat(_delta)
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _handle_chat_input_event(event):
+		get_viewport().set_input_as_handled()
+		return
 	if tutorial_active:
 		return
 	if event.is_action_pressed("pause"):
@@ -216,6 +231,25 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		_open_pause_menu()
 		get_viewport().set_input_as_handled()
+
+
+func _handle_chat_input_event(event: InputEvent) -> bool:
+	if not online_run or not (event is InputEventKey):
+		return false
+	var key_event := event as InputEventKey
+	if not key_event.pressed or key_event.echo:
+		return false
+	if chat_input_active:
+		if key_event.keycode == KEY_ESCAPE:
+			_set_chat_input_active(false)
+			return true
+		return false
+	if tutorial_active or game_over_ui.visible or get_tree().paused:
+		return false
+	if key_event.keycode == KEY_ENTER or key_event.keycode == KEY_KP_ENTER:
+		_set_chat_input_active(true)
+		return true
+	return false
 
 
 func _apply_continue_state_if_present() -> void:
@@ -373,6 +407,7 @@ func _chunk_rng(chunk: Vector2i, salt: String) -> RandomNumberGenerator:
 
 
 func _on_player_died() -> void:
+	_set_chat_input_active(false)
 	tutorial_ui.visible = false
 	tutorial_active = false
 	var earned_coins := _award_death_coins()
@@ -397,6 +432,7 @@ func _on_restart_button_pressed() -> void:
 
 func _on_quit_to_title_pressed() -> void:
 	get_tree().paused = false
+	_set_chat_input_active(false)
 	if online_run:
 		MultiplayerClient.disconnect_from_server()
 	SaveManager.clear_pending_continue_run()
@@ -457,6 +493,134 @@ func _update_controls_hint_label() -> void:
 	var bomb_key := SettingsManager.get_action_binding_text(&"throw_bomb")
 	var pause_key := SettingsManager.get_action_binding_text(&"pause")
 	controls_hint_label.text = "Aim: Mouse | Bomb: %s | Pause: %s" % [bomb_key, pause_key]
+
+
+func _build_chat_ui() -> void:
+	chat_panel = PanelContainer.new()
+	chat_panel.name = "ChatPanel"
+	chat_panel.visible = false
+	chat_panel.anchor_left = 0.0
+	chat_panel.anchor_top = 1.0
+	chat_panel.anchor_right = 0.0
+	chat_panel.anchor_bottom = 1.0
+	chat_panel.offset_left = 20.0
+	chat_panel.offset_top = -230.0
+	chat_panel.offset_right = 560.0
+	chat_panel.offset_bottom = -20.0
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.02, 0.02, 0.025, 0.72)
+	panel_style.border_color = Color(1.0, 1.0, 1.0, 0.18)
+	panel_style.set_border_width_all(1)
+	panel_style.set_corner_radius_all(6)
+	chat_panel.add_theme_stylebox_override("panel", panel_style)
+	$HUD.add_child(chat_panel)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 10)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_right", 10)
+	margin.add_theme_constant_override("margin_bottom", 8)
+	chat_panel.add_child(margin)
+
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	margin.add_child(box)
+
+	chat_log_label = Label.new()
+	chat_log_label.custom_minimum_size = Vector2(500, 138)
+	chat_log_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	chat_log_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	chat_log_label.add_theme_font_size_override("font_size", 18)
+	box.add_child(chat_log_label)
+
+	chat_input = LineEdit.new()
+	chat_input.visible = false
+	chat_input.max_length = CHAT_MAX_LENGTH
+	chat_input.caret_blink = true
+	chat_input.text_submitted.connect(_on_chat_text_submitted)
+	box.add_child(chat_input)
+
+
+func _process_chat(delta: float) -> void:
+	if chat_send_cooldown > 0.0:
+		chat_send_cooldown = maxf(chat_send_cooldown - delta, 0.0)
+	_prune_expired_chat_messages()
+	_update_chat_ui()
+
+
+func _set_chat_input_active(active: bool) -> void:
+	if not online_run and active:
+		return
+	chat_input_active = active
+	if player != null and player.has_method("set_controls_locked"):
+		player.set_controls_locked(chat_input_active)
+	if chat_input == null:
+		return
+	chat_input.visible = chat_input_active
+	if chat_input_active:
+		chat_input.text = ""
+		chat_input.grab_focus()
+	else:
+		chat_input.release_focus()
+	_update_chat_ui()
+
+
+func _on_chat_text_submitted(text: String) -> void:
+	var message_text := _sanitize_chat_text(text)
+	if message_text.is_empty():
+		_set_chat_input_active(false)
+		return
+	if chat_send_cooldown > 0.0:
+		chat_input.text = message_text
+		return
+	chat_send_cooldown = CHAT_SEND_COOLDOWN_SECONDS
+	var username := SettingsManager.get_username()
+	if username.strip_edges().is_empty():
+		username = "Player"
+	_add_chat_message(username, message_text)
+	MultiplayerClient.send_world_message("chat_message", {
+		"username": username,
+		"text": message_text
+	})
+	_set_chat_input_active(false)
+
+
+func _sanitize_chat_text(text: String) -> String:
+	var cleaned := text.replace("\n", " ").replace("\r", " ").strip_edges()
+	if cleaned.length() > CHAT_MAX_LENGTH:
+		cleaned = cleaned.substr(0, CHAT_MAX_LENGTH)
+	return cleaned
+
+
+func _add_chat_message(username: String, text: String) -> void:
+	chat_messages.append({
+		"username": username.strip_edges() if not username.strip_edges().is_empty() else "Player",
+		"text": _sanitize_chat_text(text),
+		"time": float(Time.get_ticks_msec()) / 1000.0
+	})
+	while chat_messages.size() > CHAT_MAX_VISIBLE_MESSAGES:
+		chat_messages.pop_front()
+	_update_chat_ui()
+
+
+func _prune_expired_chat_messages() -> void:
+	if chat_input_active:
+		return
+	var now := float(Time.get_ticks_msec()) / 1000.0
+	while not chat_messages.is_empty():
+		if now - float(chat_messages[0].get("time", now)) <= CHAT_MESSAGE_VISIBLE_SECONDS:
+			return
+		chat_messages.pop_front()
+
+
+func _update_chat_ui() -> void:
+	if chat_panel == null or chat_log_label == null:
+		return
+	var lines: Array[String] = []
+	for message in chat_messages:
+		lines.append("%s: %s" % [String(message.get("username", "Player")), String(message.get("text", ""))])
+	chat_log_label.text = "\n".join(lines)
+	chat_panel.visible = online_run and (chat_input_active or not chat_messages.is_empty())
 
 
 func _setup_multiplayer_if_requested() -> void:
@@ -582,9 +746,21 @@ func _on_multiplayer_world_message_received(message: Dictionary) -> void:
 				_apply_projectile_hit(message)
 		"projectile_fired":
 			_apply_remote_projectile_fired(message)
+		"chat_message":
+			_apply_chat_message(message)
 		"bomb_exploded":
 			if online_is_host:
 				_apply_bomb_exploded(message)
+
+
+func _apply_chat_message(message: Dictionary) -> void:
+	var sender_id := String(message.get("from_player_id", ""))
+	if not sender_id.is_empty() and sender_id == MultiplayerClient.local_player_id:
+		return
+	_add_chat_message(
+		String(message.get("username", "Player")),
+		String(message.get("text", ""))
+	)
 
 
 func handle_local_projectile_fired(position: Vector2, rotation: float) -> void:
