@@ -1,5 +1,7 @@
 extends PanelContainer
 
+const KenneyUI = preload("res://ui/kenney_ui.gd")
+
 signal closed
 
 const ACTION_LABELS := {
@@ -14,10 +16,16 @@ const ACTION_LABELS := {
 var _capture_action: StringName = &""
 var _action_buttons: Dictionary = {}
 
+@onready var title_label: Label = $Margin/VBox/Title
+@onready var audio_title: Label = $Margin/VBox/AudioTitle
+@onready var display_title: Label = $Margin/VBox/DisplayTitle
+@onready var gameplay_title: Label = $Margin/VBox/GameplayTitle
+@onready var controls_title: Label = $Margin/VBox/ControlsTitle
 @onready var master_slider: HSlider = $Margin/VBox/MasterRow/MasterSlider
 @onready var music_slider: HSlider = $Margin/VBox/MusicRow/MusicSlider
 @onready var sfx_slider: HSlider = $Margin/VBox/SfxRow/SfxSlider
 @onready var fullscreen_check: CheckBox = $Margin/VBox/FullscreenCheck
+@onready var tutorial_button: Button = $Margin/VBox/TutorialRow/TutorialButton
 @onready var status_label: Label = $Margin/VBox/StatusLabel
 @onready var close_button: Button = $Margin/VBox/BottomRow/CloseButton
 @onready var reset_button: Button = $Margin/VBox/BottomRow/ResetBindingsButton
@@ -33,7 +41,9 @@ func _ready() -> void:
 	music_slider.value_changed.connect(_on_audio_slider_changed)
 	sfx_slider.value_changed.connect(_on_audio_slider_changed)
 	fullscreen_check.toggled.connect(_on_fullscreen_toggled)
+	tutorial_button.pressed.connect(_on_tutorial_pressed)
 	_build_controls_rows()
+	_apply_kenney_style()
 	refresh()
 
 
@@ -114,6 +124,8 @@ func _build_controls_rows() -> void:
 
 		controls_container.add_child(row)
 		_action_buttons[action_name] = button
+		KenneyUI.apply_heading(label, 15)
+		KenneyUI.apply_secondary_button(button)
 
 
 func _update_action_button_texts() -> void:
@@ -140,16 +152,14 @@ func _on_fullscreen_toggled(_enabled: bool) -> void:
 
 
 func _save_from_controls() -> void:
-	var payload := {
-		"audio": {
-			"master_db": master_slider.value,
-			"music_db": music_slider.value,
-			"sfx_db": sfx_slider.value
-		},
-		"display": {
-			"fullscreen": fullscreen_check.button_pressed
-		},
-		"controls": SettingsManager.get_settings_snapshot().get("controls", {})
+	var payload := SettingsManager.get_settings_snapshot()
+	payload["audio"] = {
+		"master_db": master_slider.value,
+		"music_db": music_slider.value,
+		"sfx_db": sfx_slider.value
+	}
+	payload["display"] = {
+		"fullscreen": fullscreen_check.button_pressed
 	}
 	SettingsManager.apply_settings(payload)
 	SettingsManager.save_settings(payload)
@@ -164,3 +174,28 @@ func _on_reset_pressed() -> void:
 func _on_close_pressed() -> void:
 	hide_panel()
 	emit_signal("closed")
+
+
+func _on_tutorial_pressed() -> void:
+	if not SettingsManager.reset_tutorial_progress():
+		status_label.text = "Could not reset tutorial."
+		return
+	status_label.text = "Tutorial will show on the next single-player run."
+
+
+func _apply_kenney_style() -> void:
+	KenneyUI.apply_panel(self, "Green")
+	KenneyUI.apply_title_label(title_label, 30)
+	KenneyUI.apply_heading(audio_title, 18)
+	KenneyUI.apply_heading(display_title, 18)
+	KenneyUI.apply_heading(gameplay_title, 18)
+	KenneyUI.apply_heading(controls_title, 18)
+	KenneyUI.apply_scene_labels($Margin/VBox)
+	KenneyUI.apply_slider(master_slider, "Blue")
+	KenneyUI.apply_slider(music_slider, "Blue")
+	KenneyUI.apply_slider(sfx_slider, "Blue")
+	KenneyUI.apply_checkbox(fullscreen_check, "Green")
+	KenneyUI.apply_primary_button(tutorial_button)
+	KenneyUI.apply_secondary_button(reset_button)
+	KenneyUI.apply_secondary_button(close_button)
+	KenneyUI.apply_body_label(status_label, 15)

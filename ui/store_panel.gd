@@ -1,0 +1,139 @@
+extends PanelContainer
+
+const KenneyUI = preload("res://ui/kenney_ui.gd")
+const PREVIEW_SIZE := Vector2(70.0, 70.0)
+const SKIN_CATALOG: Array[Dictionary] = [
+	{"id": "classic", "name": "Classic Boo", "price": 0, "preview": "res://characters/happy_boo/square_ref.png"},
+	{"id": "berry", "name": "Berry Boo", "price": 25, "preview": "res://characters/happy_boo/skins/berry/preview.png"},
+	{"id": "mint", "name": "Mint Boo", "price": 50, "preview": "res://characters/happy_boo/skins/mint/preview.png"},
+	{"id": "gold", "name": "Gold Boo", "price": 100, "preview": "res://characters/happy_boo/skins/gold/preview.png"},
+	{"id": "sappy", "name": "Sappy Boo", "price": 150, "preview": "res://characters/happy_boo/skins/sappy/preview.png"}
+]
+
+signal closed
+
+@onready var title_label: Label = $Margin/VBox/HeaderRow/Title
+@onready var coins_label: Label = $Margin/VBox/HeaderRow/CoinsLabel
+@onready var skins_container: VBoxContainer = $Margin/VBox/SkinsContainer
+@onready var status_label: Label = $Margin/VBox/StatusLabel
+@onready var close_button: Button = $Margin/VBox/BottomRow/CloseButton
+
+
+func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	visible = false
+	close_button.pressed.connect(_on_close_pressed)
+	_apply_kenney_style()
+	refresh()
+
+
+func show_panel() -> void:
+	refresh()
+	status_label.text = ""
+	visible = true
+	close_button.grab_focus()
+
+
+func hide_panel() -> void:
+	visible = false
+	status_label.text = ""
+
+
+func refresh() -> void:
+	coins_label.text = "Coins: %d" % SettingsManager.get_coin_balance()
+	for child in skins_container.get_children():
+		child.queue_free()
+
+	for skin in SKIN_CATALOG:
+		_add_skin_row(skin)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if visible and event.is_action_pressed("pause"):
+		_on_close_pressed()
+		get_viewport().set_input_as_handled()
+
+
+func _add_skin_row(skin: Dictionary) -> void:
+	var skin_id := String(skin.get("id", "")).strip_edges()
+	var skin_name := String(skin.get("name", "Skin"))
+	var price := maxi(int(skin.get("price", 0)), 0)
+	var owned := SettingsManager.is_skin_owned(skin_id)
+	var equipped := SettingsManager.get_equipped_skin() == skin_id
+
+	var row := HBoxContainer.new()
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 14)
+
+	var preview := TextureRect.new()
+	preview.custom_minimum_size = PREVIEW_SIZE
+	preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	preview.texture = _load_preview_texture(String(skin.get("preview", "")))
+	row.add_child(preview)
+
+	var name_label := Label.new()
+	name_label.text = skin_name
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(name_label)
+
+	var price_label := Label.new()
+	price_label.custom_minimum_size = Vector2(120.0, 0.0)
+	price_label.text = "Owned" if owned else "%d coins" % price
+	row.add_child(price_label)
+
+	var action_button := Button.new()
+	action_button.custom_minimum_size = Vector2(150.0, 42.0)
+	if equipped:
+		action_button.text = "Equipped"
+		action_button.disabled = true
+	elif owned:
+		action_button.text = "Equip"
+		action_button.pressed.connect(_on_equip_pressed.bind(skin_id))
+	else:
+		action_button.text = "Buy"
+		action_button.disabled = SettingsManager.get_coin_balance() < price
+		action_button.pressed.connect(_on_buy_pressed.bind(skin_id, price))
+	row.add_child(action_button)
+
+	skins_container.add_child(row)
+	KenneyUI.apply_heading(name_label, 16)
+	KenneyUI.apply_body_label(price_label, 15)
+	KenneyUI.apply_secondary_button(action_button)
+
+
+func _load_preview_texture(path: String) -> Texture2D:
+	if path.is_empty() or not ResourceLoader.exists(path):
+		return load("res://characters/happy_boo/square_ref.png") as Texture2D
+	return load(path) as Texture2D
+
+
+func _on_buy_pressed(skin_id: String, price: int) -> void:
+	var result := SettingsManager.buy_skin(skin_id, price)
+	if bool(result.get("ok", false)):
+		status_label.text = "Skin bought and equipped."
+	else:
+		status_label.text = "Not enough coins."
+	refresh()
+
+
+func _on_equip_pressed(skin_id: String) -> void:
+	if SettingsManager.equip_skin(skin_id):
+		status_label.text = "Skin equipped."
+	else:
+		status_label.text = "Buy this skin first."
+	refresh()
+
+
+func _on_close_pressed() -> void:
+	hide_panel()
+	emit_signal("closed")
+
+
+func _apply_kenney_style() -> void:
+	KenneyUI.apply_panel(self, "Yellow")
+	KenneyUI.apply_title_label(title_label, 30)
+	KenneyUI.apply_heading(coins_label, 18)
+	KenneyUI.apply_body_label(status_label, 15)
+	KenneyUI.apply_secondary_button(close_button)

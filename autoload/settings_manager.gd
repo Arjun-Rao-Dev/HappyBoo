@@ -3,8 +3,7 @@ extends Node
 const SETTINGS_PATH := "user://settings.json"
 const SETTINGS_VERSION := 1
 const USERNAME_REGEX := "^[A-Za-z0-9_]{3,16}$"
-const CONTROL_SCHEME_KEYBOARD_MOUSE := "keyboard_mouse"
-const CONTROL_SCHEME_TOUCHSCREEN := "touchscreen"
+const DEFAULT_SKIN_ID := "classic"
 const TRACKED_ACTIONS: Array[StringName] = [
 	&"move_left",
 	&"move_right",
@@ -15,7 +14,6 @@ const TRACKED_ACTIONS: Array[StringName] = [
 ]
 
 var _settings_cache: Dictionary = {}
-var _pending_start_scene_path := "res://survivors_game.tscn"
 var _default_bindings: Dictionary = {
 	"move_left": KEY_A,
 	"move_right": KEY_D,
@@ -116,10 +114,7 @@ func get_settings_snapshot() -> Dictionary:
 			"fullscreen": DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
 		},
 		"controls": _extract_controls_snapshot(),
-		"profile": {
-			"username": get_username(),
-			"control_scheme": get_control_scheme()
-		}
+		"profile": _extract_profile_snapshot()
 	}
 
 
@@ -132,40 +127,114 @@ func get_username() -> String:
 	return String(profile.get("username", ""))
 
 
-func get_control_scheme() -> String:
+func is_tutorial_completed() -> bool:
 	var profile: Dictionary = _settings_cache.get("profile", {})
-	var scheme := String(profile.get("control_scheme", CONTROL_SCHEME_KEYBOARD_MOUSE))
-	if scheme != CONTROL_SCHEME_TOUCHSCREEN:
-		return CONTROL_SCHEME_KEYBOARD_MOUSE
-	return scheme
+	return bool(profile.get("tutorial_completed", false))
 
 
-func is_touchscreen_controls_enabled() -> bool:
-	return get_control_scheme() == CONTROL_SCHEME_TOUCHSCREEN
+func get_coin_balance() -> int:
+	var profile: Dictionary = _settings_cache.get("profile", {})
+	return maxi(int(profile.get("coins", 0)), 0)
 
 
-func set_control_scheme(scheme: String) -> bool:
-	var normalized := CONTROL_SCHEME_TOUCHSCREEN if scheme == CONTROL_SCHEME_TOUCHSCREEN else CONTROL_SCHEME_KEYBOARD_MOUSE
+func add_coins(amount: int) -> int:
+	var earned := maxi(amount, 0)
 	var snapshot := get_settings_snapshot()
 	var profile: Dictionary = snapshot.get("profile", {})
-	profile["control_scheme"] = normalized
+	var next_balance := maxi(int(profile.get("coins", 0)), 0) + earned
+	profile["coins"] = next_balance
+	snapshot["profile"] = profile
+	apply_settings(snapshot)
+	save_settings(snapshot)
+	return next_balance
+
+
+func spend_coins(amount: int) -> bool:
+	var cost := maxi(amount, 0)
+	if get_coin_balance() < cost:
+		return false
+	var snapshot := get_settings_snapshot()
+	var profile: Dictionary = snapshot.get("profile", {})
+	profile["coins"] = maxi(int(profile.get("coins", 0)), 0) - cost
 	snapshot["profile"] = profile
 	apply_settings(snapshot)
 	return save_settings(snapshot)
 
 
-func queue_start_scene(path: String) -> void:
-	var trimmed := path.strip_edges()
-	if trimmed.is_empty():
-		_pending_start_scene_path = "res://survivors_game.tscn"
-		return
-	_pending_start_scene_path = trimmed
+func get_owned_skins() -> Array[String]:
+	var profile: Dictionary = _settings_cache.get("profile", {})
+	var raw_skins: Variant = profile.get("owned_skins", [DEFAULT_SKIN_ID])
+	var owned: Array[String] = []
+	if raw_skins is Array:
+		for skin in raw_skins:
+			var skin_id := String(skin).strip_edges()
+			if skin_id.is_empty() or owned.has(skin_id):
+				continue
+			owned.append(skin_id)
+	if not owned.has(DEFAULT_SKIN_ID):
+		owned.append(DEFAULT_SKIN_ID)
+	return owned
 
 
-func consume_start_scene() -> String:
-	var scene_path := _pending_start_scene_path
-	_pending_start_scene_path = "res://survivors_game.tscn"
-	return scene_path
+func is_skin_owned(skin_id: String) -> bool:
+	return get_owned_skins().has(skin_id)
+
+
+func get_equipped_skin() -> String:
+	var profile: Dictionary = _settings_cache.get("profile", {})
+	var skin_id := String(profile.get("equipped_skin", DEFAULT_SKIN_ID)).strip_edges()
+	if skin_id.is_empty() or not is_skin_owned(skin_id):
+		return DEFAULT_SKIN_ID
+	return skin_id
+
+
+func buy_skin(skin_id: String, cost: int) -> Dictionary:
+	var normalized := skin_id.strip_edges()
+	if normalized.is_empty():
+		return {"ok": false, "status": "invalid_skin"}
+	if is_skin_owned(normalized):
+		return {"ok": true, "status": "already_owned"}
+	var price := maxi(cost, 0)
+	if get_coin_balance() < price:
+		return {"ok": false, "status": "not_enough_coins"}
+
+	var snapshot := get_settings_snapshot()
+	var profile: Dictionary = snapshot.get("profile", {})
+	profile["coins"] = maxi(int(profile.get("coins", 0)), 0) - price
+	var owned := get_owned_skins()
+	owned.append(normalized)
+	profile["owned_skins"] = owned
+	profile["equipped_skin"] = normalized
+	snapshot["profile"] = profile
+	apply_settings(snapshot)
+	if not save_settings(snapshot):
+		return {"ok": false, "status": "save_failed"}
+	return {"ok": true, "status": "bought"}
+
+
+func equip_skin(skin_id: String) -> bool:
+	var normalized := skin_id.strip_edges()
+	if not is_skin_owned(normalized):
+		return false
+	var snapshot := get_settings_snapshot()
+	var profile: Dictionary = snapshot.get("profile", {})
+	profile["equipped_skin"] = normalized
+	snapshot["profile"] = profile
+	apply_settings(snapshot)
+	return save_settings(snapshot)
+
+
+func mark_tutorial_completed(completed: bool = true) -> bool:
+	var snapshot := get_settings_snapshot()
+	var profile: Dictionary = snapshot.get("profile", {})
+	profile["tutorial_completed"] = completed
+	snapshot["profile"] = profile
+	apply_settings(snapshot)
+	return save_settings(snapshot)
+
+
+func reset_tutorial_progress() -> bool:
+	return mark_tutorial_completed(false)
 
 
 func set_username(name: String) -> bool:
@@ -226,7 +295,10 @@ func _default_settings() -> Dictionary:
 		},
 		"profile": {
 			"username": "",
-			"control_scheme": CONTROL_SCHEME_KEYBOARD_MOUSE
+			"coins": 0,
+			"owned_skins": [DEFAULT_SKIN_ID],
+			"equipped_skin": DEFAULT_SKIN_ID,
+			"tutorial_completed": false
 		},
 		"controls": _default_bindings.duplicate(true)
 	}
@@ -278,6 +350,16 @@ func _extract_controls_snapshot() -> Dictionary:
 	for action_name in TRACKED_ACTIONS:
 		controls[String(action_name)] = int(get_first_physical_keycode(action_name))
 	return controls
+
+
+func _extract_profile_snapshot() -> Dictionary:
+	return {
+		"username": get_username(),
+		"coins": get_coin_balance(),
+		"owned_skins": get_owned_skins(),
+		"equipped_skin": get_equipped_skin(),
+		"tutorial_completed": is_tutorial_completed()
+	}
 
 
 func _save_current_settings_snapshot() -> void:

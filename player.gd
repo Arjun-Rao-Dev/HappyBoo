@@ -14,12 +14,6 @@ var is_dead := false
 var overlapping_mobs: Array[Node2D] = []
 var gun_unlocked_after_headstart := false
 var spawn_time_ms: int = 0
-var _use_external_input := false
-var _external_input := Vector2.ZERO
-var _external_aim_position := Vector2.ZERO
-var _external_fire_pressed := false
-var _external_bomb_pressed := false
-var _actions_enabled := true
 
 @onready var bomb_scene: PackedScene = preload("res://bombs/bomb.tscn")
 @onready var health_bar: ProgressBar = $HealthBar
@@ -49,21 +43,10 @@ func _physics_process(_delta: float) -> void:
 		velocity = Vector2.ZERO
 		return
 	_update_headstart_gun_state()
-	var direction := _external_input if _use_external_input else Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	var direction := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	velocity = direction * move_speed
 	move_and_slide()
-	if _use_external_input:
-		var gun_node := get_node_or_null("Gun")
-		if gun_node:
-			if gun_node.has_method("set_external_aim_position"):
-				gun_node.set_external_aim_position(_external_aim_position)
-			if gun_node.has_method("set_external_fire_pressed"):
-				gun_node.set_external_fire_pressed(_external_fire_pressed)
-	if _actions_enabled:
-		_try_throw_bomb()
-	if _use_external_input:
-		_external_fire_pressed = false
-		_external_bomb_pressed = false
+	_try_throw_bomb()
 	
 	if velocity.length() > 0.0:
 		$%HappyBoo.play_walk_animation()
@@ -173,13 +156,13 @@ func _update_health_bar_color() -> void:
 
 
 func _try_throw_bomb() -> void:
-	var wants_bomb := _external_bomb_pressed if _use_external_input else Input.is_action_just_pressed("throw_bomb")
+	var wants_bomb := Input.is_action_just_pressed("throw_bomb")
 	if not wants_bomb:
 		return
 	if not can_throw_bomb():
 		return
 
-	var throw_target := _external_aim_position if _use_external_input else get_global_mouse_position()
+	var throw_target := get_global_mouse_position()
 	var throw_direction := throw_target - global_position
 	if throw_direction.length() == 0.0:
 		throw_direction = Vector2.RIGHT
@@ -236,8 +219,6 @@ func _update_username_label() -> void:
 
 
 func _update_headstart_gun_state() -> void:
-	if not _actions_enabled:
-		return
 	if gun_unlocked_after_headstart:
 		return
 	var elapsed_seconds := float(Time.get_ticks_msec() - spawn_time_ms) / 1000.0
@@ -246,45 +227,6 @@ func _update_headstart_gun_state() -> void:
 	gun_unlocked_after_headstart = true
 	if has_node("Gun"):
 		$Gun.set_active(true)
-
-
-func set_use_external_input(enabled: bool) -> void:
-	_use_external_input = enabled
-	var gun_node := get_node_or_null("Gun")
-	if gun_node and gun_node.has_method("set_external_control"):
-		gun_node.set_external_control(enabled)
-
-
-func set_external_input_vector(input_vector: Vector2) -> void:
-	_external_input = input_vector
-
-
-func set_external_aim_position(aim_position: Vector2) -> void:
-	_external_aim_position = aim_position
-
-
-func set_external_fire_pressed(fire_pressed: bool) -> void:
-	_external_fire_pressed = fire_pressed
-
-
-func set_external_bomb_pressed(bomb_pressed: bool) -> void:
-	_external_bomb_pressed = bomb_pressed
-
-
-func set_actions_enabled(enabled: bool) -> void:
-	_actions_enabled = enabled
-	if not enabled and has_node("Gun"):
-		var gun_node := get_node_or_null("Gun")
-		if gun_node and gun_node.has_method("set_active"):
-			gun_node.set_active(false)
-
-
-func set_display_name(name: String) -> void:
-	var normalized := name.strip_edges()
-	if normalized.is_empty():
-		normalized = "Player"
-	if username_label != null:
-		username_label.text = normalized
 
 
 func is_dead_state() -> bool:

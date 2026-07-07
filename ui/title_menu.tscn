@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://ui/title_menu.gd" id="1_mk5d4"]
 [ext_resource type="PackedScene" path="res://ui/options_panel.tscn" id="2_jfgx4"]
+[ext_resource type="PackedScene" path="res://ui/store_panel.tscn" id="3_store"]
 
 [node name="TitleMenu" type="Control"]
 layout_mode = 3
@@ -25,7 +26,7 @@ anchor_bottom = 1.0
 
 [node name="Panel" type="PanelContainer" parent="CenterContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(560, 420)
+custom_minimum_size = Vector2(560, 500)
 
 [node name="Margin" type="MarginContainer" parent="CenterContainer/Panel"]
 layout_mode = 2
@@ -52,6 +53,11 @@ layout_mode = 2
 text = "Clean arcade HUD + run-based action"
 horizontal_alignment = 1
 
+[node name="CoinsLabel" type="Label" parent="CenterContainer/Panel/Margin/VBox" unique_name_in_owner=true]
+layout_mode = 2
+text = "Coins: 0"
+horizontal_alignment = 1
+
 [node name="Spacer" type="Control" parent="CenterContainer/Panel/Margin/VBox"]
 custom_minimum_size = Vector2(0, 8)
 layout_mode = 2
@@ -66,10 +72,10 @@ custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
 text = "Continue"
 
-[node name="MultiplayerButton" type="Button" parent="CenterContainer/Panel/Margin/VBox" unique_name_in_owner=true]
+[node name="StoreButton" type="Button" parent="CenterContainer/Panel/Margin/VBox" unique_name_in_owner=true]
 custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
-text = "Multiplayer"
+text = "Store"
 
 [node name="OptionsButton" type="Button" parent="CenterContainer/Panel/Margin/VBox" unique_name_in_owner=true]
 custom_minimum_size = Vector2(0, 52)
@@ -87,4 +93,8 @@ autowrap_mode = 3
 horizontal_alignment = 1
 
 [node name="OptionsPanel" parent="." unique_name_in_owner=true instance=ExtResource("2_jfgx4")]
+layout_mode = 1
+
+[node name="StorePanel" parent="." unique_name_in_owner=true instance=ExtResource("3_store")]
+visible = false
 layout_mode = 1

@@ -47,7 +47,7 @@ func _explode() -> void:
 
 	var game := get_tree().current_scene
 	if kills > 0 and game and game.has_method("add_score"):
-		game.add_score(kills)
+		game.add_score(kills, false)
 
 	queue_free()
 
