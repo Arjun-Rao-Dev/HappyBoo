@@ -43,11 +43,13 @@ var tutorial_steps: Array[String] = []
 var tutorial_step_index := 0
 var online_run := false
 var online_is_host := false
+var online_role_assigned := false
 var multiplayer_send_accumulator := 0.0
 var multiplayer_mob_send_accumulator := 0.0
 var remote_players: Dictionary = {}
 var network_mobs: Dictionary = {}
 var network_foods: Dictionary = {}
+var online_host_entity_chunks: Dictionary = {}
 var next_network_mob_id := 1
 var next_network_food_id := 1
 
@@ -235,6 +237,8 @@ func _open_pause_menu() -> void:
 func _spawn_trees_around_player() -> void:
 	if player == null:
 		return
+	if online_run and not online_role_assigned:
+		return
 
 	var center_chunk := _world_to_chunk(player.global_position)
 	for x in range(center_chunk.x - active_chunk_radius, center_chunk.x + active_chunk_radius + 1):
@@ -273,9 +277,18 @@ func _spawn_chunk(chunk: Vector2i) -> void:
 		if tree_sprite is Sprite2D:
 			(tree_sprite as Sprite2D).flip_h = tree_rng.randf() < 0.5
 
-	if mob_scene != null and medium_monster_scene != null and heavy_monster_scene != null and randf() <= mob_spawn_chance_per_chunk:
-		if online_run and not online_is_host:
+	if online_run and not online_is_host:
+		return
+	_spawn_chunk_entities(chunk, chunk_origin)
+
+
+func _spawn_chunk_entities(chunk: Vector2i, chunk_origin: Vector2) -> void:
+	if online_run and online_is_host:
+		if online_host_entity_chunks.has(chunk):
 			return
+		online_host_entity_chunks[chunk] = true
+
+	if mob_scene != null and medium_monster_scene != null and heavy_monster_scene != null and randf() <= mob_spawn_chance_per_chunk:
 		var scaled_mob_count: int = mobs_per_chunk + min(int(score / 20), 4)
 		var mob_rng := _chunk_rng(chunk, "mobs")
 		for _i in scaled_mob_count:
@@ -300,8 +313,6 @@ func _spawn_chunk(chunk: Vector2i) -> void:
 
 	var food_rng := _chunk_rng(chunk, "foods")
 	if food_scene != null and food_rng.randf() <= food_spawn_chance_per_chunk:
-		if online_run and not online_is_host:
-			return
 		for _i in foods_per_chunk:
 			var food_position_found := false
 			var food_spawn_position := Vector2.ZERO
@@ -431,13 +442,14 @@ func _setup_multiplayer_if_requested() -> void:
 	multiplayer_status_label.visible = online_run
 	if not online_run:
 		return
+	online_is_host = false
+	online_role_assigned = false
 
 	MultiplayerClient.remote_player_state_received.connect(_on_remote_player_state_received)
 	MultiplayerClient.remote_player_left.connect(_on_remote_player_left)
 	MultiplayerClient.connection_status_changed.connect(_on_multiplayer_connection_status_changed)
 	MultiplayerClient.host_status_changed.connect(_on_multiplayer_host_status_changed)
 	MultiplayerClient.world_message_received.connect(_on_multiplayer_world_message_received)
-	_on_multiplayer_host_status_changed(MultiplayerClient.is_host)
 	_on_multiplayer_connection_status_changed(MultiplayerClient.connection_status)
 	MultiplayerClient.connect_to_server()
 
@@ -501,10 +513,24 @@ func _on_multiplayer_connection_status_changed(status: String) -> void:
 
 
 func _on_multiplayer_host_status_changed(is_host: bool) -> void:
+	var was_host := online_is_host
 	online_is_host = is_host
+	online_role_assigned = true
 	if online_run and online_is_host:
-		_clear_network_rendered_entities()
+		if not was_host:
+			_clear_network_rendered_entities()
+			_spawn_missing_host_entities_for_spawned_chunks()
 		multiplayer_status_label.text = "Multiplayer: Online (Host)"
+	if online_run:
+		_spawn_trees_around_player()
+
+
+func _spawn_missing_host_entities_for_spawned_chunks() -> void:
+	if not online_run or not online_is_host:
+		return
+	for chunk in spawned_chunks.keys():
+		if chunk is Vector2i:
+			_spawn_chunk_entities(chunk, Vector2(chunk.x * chunk_size, chunk.y * chunk_size))
 
 
 func _on_multiplayer_world_message_received(message: Dictionary) -> void:
