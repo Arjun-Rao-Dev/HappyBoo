@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3 uid="uid://swcb8q32cvqi"]
+[gd_scene load_steps=7 format=3 uid="uid://swcb8q32cvqi"]
 
 [ext_resource type="PackedScene" uid="uid://c1sx7bic4uhdj" path="res://player.tscn" id="1_3cish"]
 [ext_resource type="PackedScene" uid="uid://dq3r015sr1uql" path="res://pine_tree.tscn" id="2_y3pti"]
@@ -7,7 +7,6 @@
 [ext_resource type="PackedScene" path="res://ui/pause_menu.tscn" id="6_ky5ah"]
 [ext_resource type="PackedScene" path="res://ui/crosshair.tscn" id="7_lvy0n"]
 [ext_resource type="AudioStream" uid="uid://eb5fms7tiejo" path="res://music/in_game_music.mp3" id="8_h4d9a"]
-[ext_resource type="PackedScene" path="res://ui/mobile_controls.tscn" id="9_touch"]
 
 [node name="Game" type="Node2D" unique_id=1115577214]
 y_sort_enabled = true
@@ -98,8 +97,6 @@ autowrap_mode = 3
 
 [node name="Crosshair" parent="." unique_id=1621588781 instance=ExtResource("7_lvy0n")]
 
-[node name="MobileControls" parent="." instance=ExtResource("9_touch")]
-
 [node name="GameMusic" type="AudioStreamPlayer" parent="." unique_id=1075617433]
 stream = ExtResource("8_h4d9a")
 volume_db = -6.0
@@ -107,6 +104,68 @@ autoplay = true
 
 [node name="GameOverUI" type="CanvasLayer" parent="." unique_id=390352523]
 visible = false
+
+[node name="TutorialUI" type="CanvasLayer" parent="." unique_id=390352524]
+visible = false
+
+[node name="TutorialPanel" type="ColorRect" parent="TutorialUI"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 1
+color = Color(0, 0, 0, 0.6)
+
+[node name="CenterBox" type="CenterContainer" parent="TutorialUI/TutorialPanel"]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Panel" type="PanelContainer" parent="TutorialUI/TutorialPanel/CenterBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(720, 320)
+
+[node name="Margin" type="MarginContainer" parent="TutorialUI/TutorialPanel/CenterBox/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 24
+
+[node name="VBox" type="VBoxContainer" parent="TutorialUI/TutorialPanel/CenterBox/Panel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="TutorialUI/TutorialPanel/CenterBox/Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 34
+text = "How To Play"
+horizontal_alignment = 1
+
+[node name="Body" type="Label" parent="TutorialUI/TutorialPanel/CenterBox/Panel/Margin/VBox"]
+custom_minimum_size = Vector2(0, 92)
+layout_mode = 2
+autowrap_mode = 3
+text = "Tutorial step"
+vertical_alignment = 1
+
+[node name="Progress" type="Label" parent="TutorialUI/TutorialPanel/CenterBox/Panel/Margin/VBox"]
+layout_mode = 2
+horizontal_alignment = 1
+text = "Tip 1 of 4"
+
+[node name="ButtonRow" type="HBoxContainer" parent="TutorialUI/TutorialPanel/CenterBox/Panel/Margin/VBox"]
+layout_mode = 2
+alignment = 2
+
+[node name="SkipButton" type="Button" parent="TutorialUI/TutorialPanel/CenterBox/Panel/Margin/VBox/ButtonRow"]
+custom_minimum_size = Vector2(150, 48)
+layout_mode = 2
+text = "Skip"
+
+[node name="NextButton" type="Button" parent="TutorialUI/TutorialPanel/CenterBox/Panel/Margin/VBox/ButtonRow"]
+custom_minimum_size = Vector2(150, 48)
+layout_mode = 2
+text = "Next"
 
 [node name="GameOverPanel" type="ColorRect" parent="GameOverUI" unique_id=738389406]
 anchors_preset = 15

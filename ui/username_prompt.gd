@@ -1,5 +1,11 @@
 extends Control
 
+const KenneyUI = preload("res://ui/kenney_ui.gd")
+
+@onready var background: ColorRect = $Background
+@onready var panel: PanelContainer = $CenterContainer/Panel
+@onready var title_label: Label = $CenterContainer/Panel/Margin/VBox/Title
+@onready var body_label: Label = $CenterContainer/Panel/Margin/VBox/Body
 @onready var line_edit: LineEdit = $CenterContainer/Panel/Margin/VBox/UsernameInput
 @onready var continue_button: Button = $CenterContainer/Panel/Margin/VBox/ContinueButton
 @onready var error_label: Label = $CenterContainer/Panel/Margin/VBox/ErrorLabel
@@ -8,6 +14,7 @@ extends Control
 func _ready() -> void:
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	SettingsManager.load_settings()
+	_apply_kenney_style()
 	if SettingsManager.has_username():
 		_go_to_title_menu()
 		return
@@ -54,3 +61,13 @@ func _is_valid(name: String) -> bool:
 
 func _go_to_title_menu() -> void:
 	get_tree().call_deferred("change_scene_to_file", "res://ui/title_menu.tscn")
+
+
+func _apply_kenney_style() -> void:
+	KenneyUI.apply_background(background)
+	KenneyUI.apply_panel(panel, "Grey")
+	KenneyUI.apply_title_label(title_label, 34)
+	KenneyUI.apply_body_label(body_label, 18)
+	KenneyUI.apply_input(line_edit)
+	KenneyUI.apply_primary_button(continue_button)
+	error_label.add_theme_font_size_override("font_size", 15)

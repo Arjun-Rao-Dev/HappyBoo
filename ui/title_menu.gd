@@ -1,7 +1,12 @@
 extends Control
 
+const KenneyUI = preload("res://ui/kenney_ui.gd")
+
+@onready var background: ColorRect = $Background
+@onready var panel: PanelContainer = $CenterContainer/Panel
+@onready var game_title: Label = $CenterContainer/Panel/Margin/VBox/GameTitle
+@onready var subtitle: Label = $CenterContainer/Panel/Margin/VBox/Subtitle
 @onready var continue_button: Button = $CenterContainer/Panel/Margin/VBox/ContinueButton
-@onready var multiplayer_button: Button = $CenterContainer/Panel/Margin/VBox/MultiplayerButton
 @onready var options_button: Button = $CenterContainer/Panel/Margin/VBox/OptionsButton
 @onready var new_run_button: Button = $CenterContainer/Panel/Margin/VBox/NewRunButton
 @onready var quit_button: Button = $CenterContainer/Panel/Margin/VBox/QuitButton
@@ -13,8 +18,8 @@ func _ready() -> void:
 	get_tree().paused = false
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	SettingsManager.load_settings()
+	_apply_kenney_style()
 	continue_button.pressed.connect(_on_continue_pressed)
-	multiplayer_button.pressed.connect(_on_multiplayer_pressed)
 	options_button.pressed.connect(_on_options_pressed)
 	new_run_button.pressed.connect(_on_new_run_pressed)
 	quit_button.pressed.connect(_on_quit_pressed)
@@ -24,6 +29,18 @@ func _ready() -> void:
 		new_run_button.grab_focus()
 	else:
 		continue_button.grab_focus()
+
+
+func _apply_kenney_style() -> void:
+	KenneyUI.apply_background(background)
+	KenneyUI.apply_panel(panel, "Red")
+	KenneyUI.apply_title_label(game_title, 44)
+	KenneyUI.apply_body_label(subtitle, 18)
+	KenneyUI.apply_primary_button(new_run_button)
+	KenneyUI.apply_info_button(continue_button)
+	KenneyUI.apply_secondary_button(options_button)
+	KenneyUI.apply_danger_button(quit_button)
+	KenneyUI.apply_body_label(status_label, 16)
 
 
 func _refresh_continue_state() -> void:
@@ -37,32 +54,23 @@ func _refresh_continue_state() -> void:
 
 func _on_new_run_pressed() -> void:
 	SaveManager.clear_pending_continue_run()
-	SettingsManager.queue_start_scene("res://survivors_game.tscn")
-	get_tree().change_scene_to_file("res://ui/control_scheme_prompt.tscn")
+	get_tree().change_scene_to_file("res://survivors_game.tscn")
 
 
 func _on_continue_pressed() -> void:
 	var result := SaveManager.load_run()
 	if bool(result.get("ok", false)):
 		SaveManager.queue_continue_run(result.get("run_state", {}))
-		SettingsManager.queue_start_scene("res://survivors_game.tscn")
-		get_tree().change_scene_to_file("res://ui/control_scheme_prompt.tscn")
+		get_tree().change_scene_to_file("res://survivors_game.tscn")
 		return
 
 	status_label.text = "Continue failed (%s). Starting a new run." % String(result.get("status", "error"))
 	SaveManager.clear_pending_continue_run()
-	SettingsManager.queue_start_scene("res://survivors_game.tscn")
-	get_tree().change_scene_to_file("res://ui/control_scheme_prompt.tscn")
+	get_tree().change_scene_to_file("res://survivors_game.tscn")
 
 
 func _on_options_pressed() -> void:
 	options_panel.show_panel()
-
-
-func _on_multiplayer_pressed() -> void:
-	SaveManager.clear_pending_continue_run()
-	MultiplayerSession.reset_to_single_player()
-	get_tree().change_scene_to_file("res://ui/multiplayer_menu.tscn")
 
 
 func _on_options_closed() -> void:

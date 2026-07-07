@@ -1,11 +1,14 @@
 extends CanvasLayer
 
+const KenneyUI = preload("res://ui/kenney_ui.gd")
+
 signal resume_requested
 signal save_requested
 signal quit_to_title_requested
 
 @onready var panel: PanelContainer = $Center/PausePanel
 @onready var options_panel = $OptionsPanel
+@onready var title_label: Label = $Center/PausePanel/Margin/VBox/Title
 @onready var resume_button: Button = $Center/PausePanel/Margin/VBox/ResumeButton
 @onready var save_button: Button = $Center/PausePanel/Margin/VBox/SaveButton
 
@@ -13,6 +16,7 @@ signal quit_to_title_requested
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_WHEN_PAUSED
 	visible = false
+	_apply_kenney_style()
 	resume_button.pressed.connect(_on_resume_pressed)
 	save_button.pressed.connect(_on_save_pressed)
 	$Center/PausePanel/Margin/VBox/OptionsButton.pressed.connect(_on_options_pressed)
@@ -73,3 +77,12 @@ func _on_quit_pressed() -> void:
 func set_save_enabled(enabled: bool) -> void:
 	save_button.disabled = not enabled
 	save_button.visible = enabled
+
+
+func _apply_kenney_style() -> void:
+	KenneyUI.apply_panel(panel, "Blue")
+	KenneyUI.apply_title_label(title_label, 34)
+	KenneyUI.apply_primary_button(resume_button)
+	KenneyUI.apply_info_button(save_button)
+	KenneyUI.apply_secondary_button($Center/PausePanel/Margin/VBox/OptionsButton)
+	KenneyUI.apply_danger_button($Center/PausePanel/Margin/VBox/QuitButton)
