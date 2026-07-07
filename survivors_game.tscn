@@ -93,6 +93,12 @@ layout_mode = 2
 text = "Bomb: Z | Pause: Esc"
 autowrap_mode = 3
 
+[node name="MultiplayerStatusLabel" type="Label" parent="HUD/TopLeftPanel/Margin/VBox" unique_name_in_owner=true]
+visible = false
+layout_mode = 2
+text = "Multiplayer: Disconnected"
+autowrap_mode = 3
+
 [node name="PauseMenu" parent="." unique_id=481937668 instance=ExtResource("6_ky5ah")]
 
 [node name="Crosshair" parent="." unique_id=1621588781 instance=ExtResource("7_lvy0n")]

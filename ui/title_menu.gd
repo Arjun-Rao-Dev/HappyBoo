@@ -8,6 +8,7 @@ const KenneyUI = preload("res://ui/kenney_ui.gd")
 @onready var subtitle: Label = $CenterContainer/Panel/Margin/VBox/Subtitle
 @onready var coins_label: Label = $CenterContainer/Panel/Margin/VBox/CoinsLabel
 @onready var continue_button: Button = $CenterContainer/Panel/Margin/VBox/ContinueButton
+@onready var multiplayer_button: Button = $CenterContainer/Panel/Margin/VBox/MultiplayerButton
 @onready var store_button: Button = $CenterContainer/Panel/Margin/VBox/StoreButton
 @onready var options_button: Button = $CenterContainer/Panel/Margin/VBox/OptionsButton
 @onready var new_run_button: Button = $CenterContainer/Panel/Margin/VBox/NewRunButton
@@ -23,6 +24,7 @@ func _ready() -> void:
 	SettingsManager.load_settings()
 	_apply_kenney_style()
 	continue_button.pressed.connect(_on_continue_pressed)
+	multiplayer_button.pressed.connect(_on_multiplayer_pressed)
 	store_button.pressed.connect(_on_store_pressed)
 	options_button.pressed.connect(_on_options_pressed)
 	new_run_button.pressed.connect(_on_new_run_pressed)
@@ -44,6 +46,7 @@ func _apply_kenney_style() -> void:
 	KenneyUI.apply_heading(coins_label, 18)
 	KenneyUI.apply_primary_button(new_run_button)
 	KenneyUI.apply_info_button(continue_button)
+	KenneyUI.apply_info_button(multiplayer_button)
 	KenneyUI.apply_yellow_button(store_button)
 	KenneyUI.apply_secondary_button(options_button)
 	KenneyUI.apply_danger_button(quit_button)
@@ -61,6 +64,7 @@ func _refresh_continue_state() -> void:
 
 
 func _on_new_run_pressed() -> void:
+	MultiplayerClient.disconnect_from_server()
 	SaveManager.clear_pending_continue_run()
 	get_tree().change_scene_to_file("res://survivors_game.tscn")
 
@@ -69,11 +73,19 @@ func _on_continue_pressed() -> void:
 	var result := SaveManager.load_run()
 	if bool(result.get("ok", false)):
 		SaveManager.queue_continue_run(result.get("run_state", {}))
+		MultiplayerClient.disconnect_from_server()
 		get_tree().change_scene_to_file("res://survivors_game.tscn")
 		return
 
 	status_label.text = "Continue failed (%s). Starting a new run." % String(result.get("status", "error"))
 	SaveManager.clear_pending_continue_run()
+	MultiplayerClient.disconnect_from_server()
+	get_tree().change_scene_to_file("res://survivors_game.tscn")
+
+
+func _on_multiplayer_pressed() -> void:
+	SaveManager.clear_pending_continue_run()
+	MultiplayerClient.request_online_run()
 	get_tree().change_scene_to_file("res://survivors_game.tscn")
 
 

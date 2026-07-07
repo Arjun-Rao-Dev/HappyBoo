@@ -1,5 +1,16 @@
 extends Node2D
 
+const REMOTE_PLAYER_SCENE: PackedScene = preload("res://multiplayer/remote_player.tscn")
+const PROJECTILE_SCENE: PackedScene = preload("res://pistol/projectile.tscn")
+const MUZZLE_FLASH_SCENE: PackedScene = preload("res://pistol/muzzle_flash/muzzle_flash.tscn")
+const MULTIPLAYER_STATE_SEND_INTERVAL := 0.05
+const MULTIPLAYER_MOB_STATE_SEND_INTERVAL := 0.12
+const ONLINE_MOB_SPAWN_CHANCE_PER_CHUNK := 0.75
+const CHAT_MAX_LENGTH := 120
+const CHAT_MAX_VISIBLE_MESSAGES := 6
+const CHAT_MESSAGE_VISIBLE_SECONDS := 8.0
+const CHAT_SEND_COOLDOWN_SECONDS := 0.5
+
 @export var tree_scene: PackedScene = preload("res://pine_tree.tscn")
 @export var mob_scene: PackedScene = preload("res://slime.tscn")
 @export var medium_monster_scene: PackedScene = preload("res://monsters/monster_bee.tscn")
@@ -37,6 +48,23 @@ var coins_awarded_this_run := false
 var tutorial_active := false
 var tutorial_steps: Array[String] = []
 var tutorial_step_index := 0
+var online_run := false
+var online_is_host := false
+var online_role_assigned := false
+var multiplayer_send_accumulator := 0.0
+var multiplayer_mob_send_accumulator := 0.0
+var remote_players: Dictionary = {}
+var network_mobs: Dictionary = {}
+var network_foods: Dictionary = {}
+var online_host_entity_chunks: Dictionary = {}
+var next_network_mob_id := 1
+var next_network_food_id := 1
+var chat_messages: Array[Dictionary] = []
+var chat_input_active := false
+var chat_send_cooldown := 0.0
+var chat_panel: PanelContainer
+var chat_log_label: Label
+var chat_input: LineEdit
 
 @onready var player = $Player
 @onready var game_over_ui: CanvasLayer = $GameOverUI
@@ -48,6 +76,7 @@ var tutorial_step_index := 0
 @onready var bomb_cooldown_ui = $HUD/TopLeftPanel/Margin/VBox/BombRow/BombCooldownUI
 @onready var health_bar: ProgressBar = $HUD/TopLeftPanel/Margin/VBox/HealthBar
 @onready var controls_hint_label: Label = $HUD/TopLeftPanel/Margin/VBox/ControlsHintLabel
+@onready var multiplayer_status_label: Label = $HUD/TopLeftPanel/Margin/VBox/MultiplayerStatusLabel
 @onready var pause_menu = $PauseMenu
 @onready var crosshair = $Crosshair
 @onready var game_music: AudioStreamPlayer = $GameMusic
@@ -97,12 +126,14 @@ func _ready() -> void:
 	pause_menu.set_save_enabled(true)
 	tutorial_next_button.pressed.connect(_on_tutorial_next_pressed)
 	tutorial_skip_button.pressed.connect(_on_tutorial_skip_pressed)
+	_build_chat_ui()
 
 	run_start_time_ms = Time.get_ticks_msec()
 	_apply_continue_state_if_present()
 	_update_score_label()
 	_on_player_health_changed(player.get_current_health(), player.get_max_health())
 	_update_controls_hint_label()
+	_setup_multiplayer_if_requested()
 	_maybe_start_first_run_tutorial()
 	_spawn_trees_around_player()
 
@@ -153,6 +184,18 @@ func _on_tutorial_skip_pressed() -> void:
 
 func _exit_tree() -> void:
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	if online_run:
+		if MultiplayerClient.remote_player_state_received.is_connected(_on_remote_player_state_received):
+			MultiplayerClient.remote_player_state_received.disconnect(_on_remote_player_state_received)
+		if MultiplayerClient.remote_player_left.is_connected(_on_remote_player_left):
+			MultiplayerClient.remote_player_left.disconnect(_on_remote_player_left)
+		if MultiplayerClient.connection_status_changed.is_connected(_on_multiplayer_connection_status_changed):
+			MultiplayerClient.connection_status_changed.disconnect(_on_multiplayer_connection_status_changed)
+		if MultiplayerClient.host_status_changed.is_connected(_on_multiplayer_host_status_changed):
+			MultiplayerClient.host_status_changed.disconnect(_on_multiplayer_host_status_changed)
+		if MultiplayerClient.world_message_received.is_connected(_on_multiplayer_world_message_received):
+			MultiplayerClient.world_message_received.disconnect(_on_multiplayer_world_message_received)
+		MultiplayerClient.disconnect_from_server()
 
 
 func _physics_process(_delta: float) -> void:
@@ -169,9 +212,14 @@ func _process(_delta: float) -> void:
 		player.is_full_health()
 	)
 	_update_controls_hint_label()
+	_process_multiplayer_state(_delta)
+	_process_chat(_delta)
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _handle_chat_input_event(event):
+		get_viewport().set_input_as_handled()
+		return
 	if tutorial_active:
 		return
 	if event.is_action_pressed("pause"):
@@ -183,6 +231,25 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		_open_pause_menu()
 		get_viewport().set_input_as_handled()
+
+
+func _handle_chat_input_event(event: InputEvent) -> bool:
+	if not online_run or not (event is InputEventKey):
+		return false
+	var key_event := event as InputEventKey
+	if not key_event.pressed or key_event.echo:
+		return false
+	if chat_input_active:
+		if key_event.keycode == KEY_ESCAPE:
+			_set_chat_input_active(false)
+			return true
+		return false
+	if tutorial_active or game_over_ui.visible or get_tree().paused:
+		return false
+	if key_event.keycode == KEY_ENTER or key_event.keycode == KEY_KP_ENTER:
+		_set_chat_input_active(true)
+		return true
+	return false
 
 
 func _apply_continue_state_if_present() -> void:
@@ -207,15 +274,35 @@ func _open_pause_menu() -> void:
 func _spawn_trees_around_player() -> void:
 	if player == null:
 		return
+	if online_run and not online_role_assigned:
+		return
 
-	var center_chunk := _world_to_chunk(player.global_position)
-	for x in range(center_chunk.x - active_chunk_radius, center_chunk.x + active_chunk_radius + 1):
-		for y in range(center_chunk.y - active_chunk_radius, center_chunk.y + active_chunk_radius + 1):
-			var chunk := Vector2i(x, y)
-			if spawned_chunks.has(chunk):
-				continue
-			_spawn_chunk(chunk)
-			spawned_chunks[chunk] = true
+	for center_position in _get_chunk_spawn_center_positions():
+		var center_chunk := _world_to_chunk(center_position)
+		for x in range(center_chunk.x - active_chunk_radius, center_chunk.x + active_chunk_radius + 1):
+			for y in range(center_chunk.y - active_chunk_radius, center_chunk.y + active_chunk_radius + 1):
+				var chunk := Vector2i(x, y)
+				if spawned_chunks.has(chunk):
+					continue
+				_spawn_chunk(chunk)
+				spawned_chunks[chunk] = true
+
+
+func _get_chunk_spawn_center_positions() -> Array[Vector2]:
+	var centers: Array[Vector2] = [player.global_position]
+	if not online_run or not online_is_host:
+		return centers
+	for remote_player in remote_players.values():
+		if remote_player is Node2D and is_instance_valid(remote_player):
+			centers.append((remote_player as Node2D).global_position)
+	return centers
+
+
+func _is_far_enough_from_spawn_centers(spawn_position: Vector2, minimum_distance: float) -> bool:
+	for center_position in _get_chunk_spawn_center_positions():
+		if spawn_position.distance_to(center_position) < minimum_distance:
+			return false
+	return true
 
 
 func _spawn_chunk(chunk: Vector2i) -> void:
@@ -231,7 +318,7 @@ func _spawn_chunk(chunk: Vector2i) -> void:
 				tree_rng.randf_range(0.0, chunk_size),
 				tree_rng.randf_range(0.0, chunk_size)
 			)
-			if spawn_position.distance_to(player.global_position) >= min_tree_distance_from_player:
+			if _is_far_enough_from_spawn_centers(spawn_position, min_tree_distance_from_player):
 				position_found = true
 				break
 		if not position_found:
@@ -245,35 +332,52 @@ func _spawn_chunk(chunk: Vector2i) -> void:
 		if tree_sprite is Sprite2D:
 			(tree_sprite as Sprite2D).flip_h = tree_rng.randf() < 0.5
 
-	if mob_scene != null and medium_monster_scene != null and heavy_monster_scene != null and randf() <= mob_spawn_chance_per_chunk:
+	if online_run and not online_is_host:
+		return
+	_spawn_chunk_entities(chunk, chunk_origin)
+
+
+func _spawn_chunk_entities(chunk: Vector2i, chunk_origin: Vector2) -> void:
+	if online_run and online_is_host:
+		if online_host_entity_chunks.has(chunk):
+			return
+		online_host_entity_chunks[chunk] = true
+
+	var mob_spawn_chance := ONLINE_MOB_SPAWN_CHANCE_PER_CHUNK if online_run else mob_spawn_chance_per_chunk
+	if mob_scene != null and medium_monster_scene != null and heavy_monster_scene != null and randf() <= mob_spawn_chance:
 		var scaled_mob_count: int = mobs_per_chunk + min(int(score / 20), 4)
+		var mob_rng := _chunk_rng(chunk, "mobs")
 		for _i in scaled_mob_count:
 			var mob_position_found := false
 			var mob_spawn_position := Vector2.ZERO
 			for _attempt in spawn_attempts_per_mob:
 				mob_spawn_position = chunk_origin + Vector2(
-					randf_range(0.0, chunk_size),
-					randf_range(0.0, chunk_size)
+					mob_rng.randf_range(0.0, chunk_size),
+					mob_rng.randf_range(0.0, chunk_size)
 				)
-				if mob_spawn_position.distance_to(player.global_position) >= min_mob_distance_from_player:
+				if _is_far_enough_from_spawn_centers(mob_spawn_position, min_mob_distance_from_player):
 					mob_position_found = true
 					break
 			if not mob_position_found:
 				continue
-			var mob := _pick_monster_scene_for_score().instantiate()
+			var mob_kind := _pick_monster_kind_for_score(mob_rng)
+			var mob := _instantiate_mob_kind(mob_kind)
 			add_child(mob)
 			mob.global_position = mob_spawn_position
+			if online_run and online_is_host:
+				_register_host_mob(mob, mob_kind)
 
-	if food_scene != null and randf() <= food_spawn_chance_per_chunk:
+	var food_rng := _chunk_rng(chunk, "foods")
+	if food_scene != null and food_rng.randf() <= food_spawn_chance_per_chunk:
 		for _i in foods_per_chunk:
 			var food_position_found := false
 			var food_spawn_position := Vector2.ZERO
 			for _attempt in spawn_attempts_per_food:
 				food_spawn_position = chunk_origin + Vector2(
-					randf_range(0.0, chunk_size),
-					randf_range(0.0, chunk_size)
+					food_rng.randf_range(0.0, chunk_size),
+					food_rng.randf_range(0.0, chunk_size)
 				)
-				if food_spawn_position.distance_to(player.global_position) >= min_food_distance_from_player:
+				if _is_far_enough_from_spawn_centers(food_spawn_position, min_food_distance_from_player):
 					food_position_found = true
 					break
 			if not food_position_found:
@@ -281,6 +385,12 @@ func _spawn_chunk(chunk: Vector2i) -> void:
 			var food := food_scene.instantiate()
 			add_child(food)
 			food.global_position = food_spawn_position
+			if online_run and online_is_host:
+				var texture_index := food_rng.randi_range(0, 11)
+				var visual_scale := food_rng.randf_range(1.6, 2.1)
+				if food.has_method("apply_network_visual"):
+					food.apply_network_visual(texture_index, visual_scale)
+				_register_host_food(food, texture_index, visual_scale)
 
 
 func _world_to_chunk(world_position: Vector2) -> Vector2i:
@@ -297,6 +407,7 @@ func _chunk_rng(chunk: Vector2i, salt: String) -> RandomNumberGenerator:
 
 
 func _on_player_died() -> void:
+	_set_chat_input_active(false)
 	tutorial_ui.visible = false
 	tutorial_active = false
 	var earned_coins := _award_death_coins()
@@ -321,6 +432,9 @@ func _on_restart_button_pressed() -> void:
 
 func _on_quit_to_title_pressed() -> void:
 	get_tree().paused = false
+	_set_chat_input_active(false)
+	if online_run:
+		MultiplayerClient.disconnect_from_server()
 	SaveManager.clear_pending_continue_run()
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	crosshair.visible = false
@@ -379,6 +493,548 @@ func _update_controls_hint_label() -> void:
 	var bomb_key := SettingsManager.get_action_binding_text(&"throw_bomb")
 	var pause_key := SettingsManager.get_action_binding_text(&"pause")
 	controls_hint_label.text = "Aim: Mouse | Bomb: %s | Pause: %s" % [bomb_key, pause_key]
+
+
+func _build_chat_ui() -> void:
+	chat_panel = PanelContainer.new()
+	chat_panel.name = "ChatPanel"
+	chat_panel.visible = false
+	chat_panel.anchor_left = 0.0
+	chat_panel.anchor_top = 1.0
+	chat_panel.anchor_right = 0.0
+	chat_panel.anchor_bottom = 1.0
+	chat_panel.offset_left = 20.0
+	chat_panel.offset_top = -230.0
+	chat_panel.offset_right = 560.0
+	chat_panel.offset_bottom = -20.0
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.02, 0.02, 0.025, 0.72)
+	panel_style.border_color = Color(1.0, 1.0, 1.0, 0.18)
+	panel_style.set_border_width_all(1)
+	panel_style.set_corner_radius_all(6)
+	chat_panel.add_theme_stylebox_override("panel", panel_style)
+	$HUD.add_child(chat_panel)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 10)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_right", 10)
+	margin.add_theme_constant_override("margin_bottom", 8)
+	chat_panel.add_child(margin)
+
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	margin.add_child(box)
+
+	chat_log_label = Label.new()
+	chat_log_label.custom_minimum_size = Vector2(500, 138)
+	chat_log_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	chat_log_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	chat_log_label.add_theme_font_size_override("font_size", 18)
+	box.add_child(chat_log_label)
+
+	chat_input = LineEdit.new()
+	chat_input.visible = false
+	chat_input.max_length = CHAT_MAX_LENGTH
+	chat_input.caret_blink = true
+	chat_input.text_submitted.connect(_on_chat_text_submitted)
+	box.add_child(chat_input)
+
+
+func _process_chat(delta: float) -> void:
+	if chat_send_cooldown > 0.0:
+		chat_send_cooldown = maxf(chat_send_cooldown - delta, 0.0)
+	_prune_expired_chat_messages()
+	_update_chat_ui()
+
+
+func _set_chat_input_active(active: bool) -> void:
+	if not online_run and active:
+		return
+	chat_input_active = active
+	if player != null and player.has_method("set_controls_locked"):
+		player.set_controls_locked(chat_input_active)
+	if chat_input == null:
+		return
+	chat_input.visible = chat_input_active
+	if chat_input_active:
+		chat_input.text = ""
+		chat_input.grab_focus()
+	else:
+		chat_input.release_focus()
+	_update_chat_ui()
+
+
+func _on_chat_text_submitted(text: String) -> void:
+	var message_text := _sanitize_chat_text(text)
+	if message_text.is_empty():
+		_set_chat_input_active(false)
+		return
+	if chat_send_cooldown > 0.0:
+		chat_input.text = message_text
+		return
+	chat_send_cooldown = CHAT_SEND_COOLDOWN_SECONDS
+	var username := SettingsManager.get_username()
+	if username.strip_edges().is_empty():
+		username = "Player"
+	_add_chat_message(username, message_text)
+	MultiplayerClient.send_world_message("chat_message", {
+		"username": username,
+		"text": message_text
+	})
+	_set_chat_input_active(false)
+
+
+func _sanitize_chat_text(text: String) -> String:
+	var cleaned := text.replace("\n", " ").replace("\r", " ").strip_edges()
+	if cleaned.length() > CHAT_MAX_LENGTH:
+		cleaned = cleaned.substr(0, CHAT_MAX_LENGTH)
+	return cleaned
+
+
+func _add_chat_message(username: String, text: String) -> void:
+	chat_messages.append({
+		"username": username.strip_edges() if not username.strip_edges().is_empty() else "Player",
+		"text": _sanitize_chat_text(text),
+		"time": float(Time.get_ticks_msec()) / 1000.0
+	})
+	while chat_messages.size() > CHAT_MAX_VISIBLE_MESSAGES:
+		chat_messages.pop_front()
+	_update_chat_ui()
+
+
+func _prune_expired_chat_messages() -> void:
+	if chat_input_active:
+		return
+	var now := float(Time.get_ticks_msec()) / 1000.0
+	while not chat_messages.is_empty():
+		if now - float(chat_messages[0].get("time", now)) <= CHAT_MESSAGE_VISIBLE_SECONDS:
+			return
+		chat_messages.pop_front()
+
+
+func _update_chat_ui() -> void:
+	if chat_panel == null or chat_log_label == null:
+		return
+	var lines: Array[String] = []
+	for message in chat_messages:
+		lines.append("%s: %s" % [String(message.get("username", "Player")), String(message.get("text", ""))])
+	chat_log_label.text = "\n".join(lines)
+	chat_panel.visible = online_run and (chat_input_active or not chat_messages.is_empty())
+
+
+func _setup_multiplayer_if_requested() -> void:
+	online_run = MultiplayerClient.consume_online_run_requested()
+	multiplayer_status_label.visible = online_run
+	if not online_run:
+		return
+	online_is_host = false
+	online_role_assigned = false
+
+	MultiplayerClient.remote_player_state_received.connect(_on_remote_player_state_received)
+	MultiplayerClient.remote_player_left.connect(_on_remote_player_left)
+	MultiplayerClient.connection_status_changed.connect(_on_multiplayer_connection_status_changed)
+	MultiplayerClient.host_status_changed.connect(_on_multiplayer_host_status_changed)
+	MultiplayerClient.world_message_received.connect(_on_multiplayer_world_message_received)
+	_on_multiplayer_connection_status_changed(MultiplayerClient.connection_status)
+	MultiplayerClient.connect_to_server()
+
+
+func _process_multiplayer_state(delta: float) -> void:
+	if not online_run:
+		return
+	multiplayer_send_accumulator += delta
+	if multiplayer_send_accumulator < MULTIPLAYER_STATE_SEND_INTERVAL:
+		pass
+	else:
+		multiplayer_send_accumulator = 0.0
+		MultiplayerClient.send_player_state(_build_local_player_state())
+
+	if online_is_host:
+		multiplayer_mob_send_accumulator += delta
+		if multiplayer_mob_send_accumulator >= MULTIPLAYER_MOB_STATE_SEND_INTERVAL:
+			multiplayer_mob_send_accumulator = 0.0
+			_broadcast_mob_states()
+
+
+func _build_local_player_state() -> Dictionary:
+	var animation_state := "walk" if player.velocity.length() > 1.0 else "idle"
+	return {
+		"position": {
+			"x": player.global_position.x,
+			"y": player.global_position.y
+		},
+		"velocity": {
+			"x": player.velocity.x,
+			"y": player.velocity.y
+		},
+		"username": SettingsManager.get_username(),
+		"skin_id": SettingsManager.get_equipped_skin(),
+		"animation": animation_state,
+		"aim_angle": player.get_gun_aim_angle(),
+		"gun_active": player.is_gun_active()
+	}
+
+
+func _on_remote_player_state_received(player_id: String, state: Dictionary) -> void:
+	var remote_player: Node2D = remote_players.get(player_id, null)
+	if remote_player == null:
+		remote_player = REMOTE_PLAYER_SCENE.instantiate()
+		remote_player.name = "RemotePlayer_%s" % player_id.substr(0, 8)
+		add_child(remote_player)
+		remote_players[player_id] = remote_player
+	if remote_player.has_method("apply_state"):
+		remote_player.apply_state(state)
+
+
+func _on_remote_player_left(player_id: String) -> void:
+	var remote_player: Node = remote_players.get(player_id, null)
+	if remote_player != null:
+		remote_player.queue_free()
+	remote_players.erase(player_id)
+
+
+func _on_multiplayer_connection_status_changed(status: String) -> void:
+	multiplayer_status_label.text = "Multiplayer: %s" % status
+
+
+func _on_multiplayer_host_status_changed(is_host: bool) -> void:
+	var was_host := online_is_host
+	online_is_host = is_host
+	online_role_assigned = true
+	if online_run and online_is_host:
+		if not was_host:
+			_clear_network_rendered_entities()
+			_spawn_missing_host_entities_for_spawned_chunks()
+		multiplayer_status_label.text = "Multiplayer: Online (Host)"
+	if online_run:
+		_spawn_trees_around_player()
+
+
+func _spawn_missing_host_entities_for_spawned_chunks() -> void:
+	if not online_run or not online_is_host:
+		return
+	for chunk in spawned_chunks.keys():
+		if chunk is Vector2i:
+			_spawn_chunk_entities(chunk, Vector2(chunk.x * chunk_size, chunk.y * chunk_size))
+
+
+func _on_multiplayer_world_message_received(message: Dictionary) -> void:
+	var message_type := String(message.get("type", ""))
+	match message_type:
+		"player_joined":
+			if online_is_host:
+				_send_world_snapshot()
+		"world_snapshot":
+			if not online_is_host:
+				_apply_world_snapshot(message)
+		"world_spawn":
+			if not online_is_host:
+				_apply_world_spawn(message)
+		"mob_state":
+			if not online_is_host:
+				_apply_mob_state(message)
+		"mob_died":
+			_apply_mob_died(message)
+		"food_collect":
+			if online_is_host:
+				_apply_food_collected(String(message.get("food_id", "")), String(message.get("from_player_id", "")))
+		"food_collected":
+			_apply_food_collected(String(message.get("food_id", "")), String(message.get("collector_player_id", "")))
+		"projectile_hit":
+			if online_is_host:
+				_apply_projectile_hit(message)
+		"projectile_fired":
+			_apply_remote_projectile_fired(message)
+		"chat_message":
+			_apply_chat_message(message)
+		"bomb_exploded":
+			if online_is_host:
+				_apply_bomb_exploded(message)
+
+
+func _apply_chat_message(message: Dictionary) -> void:
+	var sender_id := String(message.get("from_player_id", ""))
+	if not sender_id.is_empty() and sender_id == MultiplayerClient.local_player_id:
+		return
+	_add_chat_message(
+		String(message.get("username", "Player")),
+		String(message.get("text", ""))
+	)
+
+
+func handle_local_projectile_fired(position: Vector2, rotation: float) -> void:
+	if not online_run:
+		return
+	MultiplayerClient.send_world_message("projectile_fired", {
+		"position": _vector_to_payload(position),
+		"rotation": rotation
+	})
+
+
+func _apply_remote_projectile_fired(message: Dictionary) -> void:
+	var projectile := PROJECTILE_SCENE.instantiate()
+	projectile.visual_only = true
+	add_child(projectile)
+	projectile.global_position = _payload_to_vector(message.get("position", {}))
+	projectile.rotation = float(message.get("rotation", 0.0))
+	projectile.direction = Vector2.RIGHT.rotated(projectile.rotation)
+
+	var muzzle_flash := MUZZLE_FLASH_SCENE.instantiate()
+	add_child(muzzle_flash)
+	muzzle_flash.global_position = projectile.global_position
+	muzzle_flash.global_rotation = projectile.rotation
+
+
+func _register_host_mob(mob: Node, mob_kind: String) -> void:
+	var mob_id := "mob_%d" % next_network_mob_id
+	next_network_mob_id += 1
+	mob.set_meta("network_id", mob_id)
+	mob.set_meta("network_kind", mob_kind)
+	network_mobs[mob_id] = mob
+	MultiplayerClient.send_world_message("world_spawn", _build_mob_spawn_payload(mob_id, mob_kind, mob))
+
+
+func _register_host_food(food: Node, texture_index: int, visual_scale: float) -> void:
+	var food_id := "food_%d" % next_network_food_id
+	next_network_food_id += 1
+	food.set("network_id", food_id)
+	food.set("network_mode", "host")
+	food.set_meta("texture_index", texture_index)
+	food.set_meta("visual_scale", visual_scale)
+	network_foods[food_id] = food
+	MultiplayerClient.send_world_message("world_spawn", {
+		"entity_type": "food",
+		"food_id": food_id,
+		"texture_index": texture_index,
+		"visual_scale": visual_scale,
+		"position": _vector_to_payload((food as Node2D).global_position)
+	})
+
+
+func _build_mob_spawn_payload(mob_id: String, mob_kind: String, mob: Node) -> Dictionary:
+	return {
+		"entity_type": "mob",
+		"mob_id": mob_id,
+		"mob_kind": mob_kind,
+		"position": _vector_to_payload((mob as Node2D).global_position),
+		"health": float(mob.get("current_health"))
+	}
+
+
+func _send_world_snapshot() -> void:
+	var mobs: Array[Dictionary] = []
+	for mob_id in network_mobs.keys():
+		var mob: Node = network_mobs[mob_id]
+		if is_instance_valid(mob):
+			mobs.append(_build_mob_spawn_payload(mob_id, String(mob.get_meta("network_kind", "slime")), mob))
+	var foods: Array[Dictionary] = []
+	for food_id in network_foods.keys():
+		var food: Node = network_foods[food_id]
+		if is_instance_valid(food):
+			foods.append({
+				"entity_type": "food",
+				"food_id": food_id,
+				"texture_index": int(food.get_meta("texture_index", 0)),
+				"visual_scale": float(food.get_meta("visual_scale", 1.8)),
+				"position": _vector_to_payload((food as Node2D).global_position)
+			})
+	MultiplayerClient.send_world_message("world_snapshot", {"mobs": mobs, "foods": foods})
+
+
+func _apply_world_snapshot(message: Dictionary) -> void:
+	_clear_network_rendered_entities()
+	for mob_data in message.get("mobs", []):
+		if mob_data is Dictionary:
+			_spawn_network_mob_from_payload(mob_data)
+	for food_data in message.get("foods", []):
+		if food_data is Dictionary:
+			_spawn_network_food_from_payload(food_data)
+
+
+func _apply_world_spawn(message: Dictionary) -> void:
+	if String(message.get("entity_type", "")) == "mob":
+		_spawn_network_mob_from_payload(message)
+	elif String(message.get("entity_type", "")) == "food":
+		_spawn_network_food_from_payload(message)
+
+
+func _spawn_network_mob_from_payload(payload: Dictionary) -> void:
+	var mob_id := String(payload.get("mob_id", ""))
+	if mob_id.is_empty() or network_mobs.has(mob_id):
+		return
+	var mob := _instantiate_mob_kind(String(payload.get("mob_kind", "slime")))
+	add_child(mob)
+	mob.global_position = _payload_to_vector(payload.get("position", {}))
+	mob.set_meta("network_id", mob_id)
+	mob.add_to_group("network_mobs")
+	mob.remove_from_group("mobs")
+	mob.set_physics_process(false)
+	mob.set_process(false)
+	if mob.get("current_health") != null:
+		mob.set("current_health", float(payload.get("health", mob.get("current_health"))))
+	network_mobs[mob_id] = mob
+
+
+func _spawn_network_food_from_payload(payload: Dictionary) -> void:
+	var food_id := String(payload.get("food_id", ""))
+	if food_id.is_empty() or network_foods.has(food_id):
+		return
+	var food := food_scene.instantiate()
+	add_child(food)
+	food.global_position = _payload_to_vector(payload.get("position", {}))
+	food.set("network_id", food_id)
+	food.set("network_mode", "client")
+	if food.has_method("apply_network_visual"):
+		food.apply_network_visual(int(payload.get("texture_index", 0)), float(payload.get("visual_scale", 1.8)))
+	network_foods[food_id] = food
+
+
+func _apply_mob_state(message: Dictionary) -> void:
+	var mob_id := String(message.get("mob_id", ""))
+	var mob: Node2D = network_mobs.get(mob_id, null)
+	if mob == null or not is_instance_valid(mob):
+		return
+	mob.global_position = mob.global_position.lerp(_payload_to_vector(message.get("position", {})), 0.45)
+	if mob.get("current_health") != null:
+		mob.set("current_health", float(message.get("health", mob.get("current_health"))))
+
+
+func _broadcast_mob_states() -> void:
+	for mob_id in network_mobs.keys():
+		var mob: Node = network_mobs[mob_id]
+		if not is_instance_valid(mob):
+			network_mobs.erase(mob_id)
+			continue
+		MultiplayerClient.send_world_message("mob_state", {
+			"mob_id": mob_id,
+			"position": _vector_to_payload((mob as Node2D).global_position),
+			"health": float(mob.get("current_health"))
+		})
+
+
+func apply_network_mob_damage(mob: Node, amount: float, counts_for_coins: bool) -> bool:
+	if not online_run:
+		return mob.take_damage(amount) if mob.has_method("take_damage") else false
+	if not online_is_host:
+		return false
+	var mob_id := String(mob.get_meta("network_id", ""))
+	if mob_id.is_empty():
+		return mob.take_damage(amount) if mob.has_method("take_damage") else false
+	var killed: bool = mob.take_damage(amount) if mob.has_method("take_damage") else false
+	if killed:
+		network_mobs.erase(mob_id)
+		MultiplayerClient.send_world_message("mob_died", {
+			"mob_id": mob_id,
+			"counts_for_coins": counts_for_coins
+		})
+	return killed
+
+
+func request_network_projectile_hit(mob: Node) -> void:
+	if not online_run:
+		return
+	var mob_id := String(mob.get_meta("network_id", ""))
+	if mob_id.is_empty():
+		return
+	if online_is_host:
+		if apply_network_mob_damage(mob, 1.0, true):
+			add_score(1)
+	else:
+		MultiplayerClient.send_world_message("projectile_hit", {"mob_id": mob_id, "damage": 1.0})
+
+
+func request_network_bomb_explosion(origin: Vector2, radius: float, damage: float) -> bool:
+	if not online_run:
+		return false
+	if online_is_host:
+		_apply_host_bomb_damage(origin, radius, damage)
+	else:
+		MultiplayerClient.send_world_message("bomb_exploded", {
+			"position": _vector_to_payload(origin),
+			"radius": radius,
+			"damage": damage
+		})
+	return true
+
+
+func _apply_projectile_hit(message: Dictionary) -> void:
+	var mob_id := String(message.get("mob_id", ""))
+	var mob: Node = network_mobs.get(mob_id, null)
+	if mob != null and is_instance_valid(mob):
+		if apply_network_mob_damage(mob, float(message.get("damage", 1.0)), true):
+			add_score(1)
+
+
+func _apply_bomb_exploded(message: Dictionary) -> void:
+	_apply_host_bomb_damage(
+		_payload_to_vector(message.get("position", {})),
+		float(message.get("radius", 0.0)),
+		float(message.get("damage", 0.0))
+	)
+
+
+func _apply_host_bomb_damage(origin: Vector2, radius: float, damage: float) -> void:
+	var kills := 0
+	for mob_id in network_mobs.keys():
+		var mob: Node = network_mobs[mob_id]
+		if not is_instance_valid(mob) or not (mob is Node2D):
+			continue
+		if (mob as Node2D).global_position.distance_to(origin) > radius:
+			continue
+		if apply_network_mob_damage(mob, damage, false):
+			kills += 1
+	if kills > 0:
+		add_score(kills, false)
+
+
+func handle_food_pickup(food: Node, body: Node) -> void:
+	if body.name != "Player":
+		return
+	if not online_run:
+		if body.has_method("heal"):
+			body.heal(float(food.get("heal_amount")))
+		food.queue_free()
+		return
+	var food_id := String(food.get("network_id"))
+	if online_is_host:
+		_apply_food_collected(food_id, MultiplayerClient.local_player_id)
+	else:
+		MultiplayerClient.send_world_message("food_collect", {"food_id": food_id})
+
+
+func _apply_food_collected(food_id: String, collector_player_id: String) -> void:
+	var food: Node = network_foods.get(food_id, null)
+	if food == null or not is_instance_valid(food):
+		return
+	if collector_player_id == MultiplayerClient.local_player_id and player.has_method("heal"):
+		player.heal(float(food.get("heal_amount")))
+	network_foods.erase(food_id)
+	food.queue_free()
+	if online_is_host:
+		MultiplayerClient.send_world_message("food_collected", {
+			"food_id": food_id,
+			"collector_player_id": collector_player_id
+		})
+
+
+func _apply_mob_died(message: Dictionary) -> void:
+	var mob_id := String(message.get("mob_id", ""))
+	var mob: Node = network_mobs.get(mob_id, null)
+	if mob != null and is_instance_valid(mob):
+		mob.queue_free()
+	network_mobs.erase(mob_id)
+
+
+func _clear_network_rendered_entities() -> void:
+	for mob in network_mobs.values():
+		if is_instance_valid(mob):
+			(mob as Node).queue_free()
+	for food in network_foods.values():
+		if is_instance_valid(food):
+			(food as Node).queue_free()
+	network_mobs.clear()
+	network_foods.clear()
 
 
 func _update_hud_health_bar_color(current: float, maximum: float) -> void:
@@ -444,12 +1100,38 @@ func import_run_state(state: Dictionary) -> bool:
 	return true
 
 
-func _pick_monster_scene_for_score() -> PackedScene:
-	if score >= score_for_heavy_monsters and randf() < 0.55:
-		return heavy_monster_scene
-	if score >= score_for_medium_monsters and randf() < 0.45:
-		return medium_monster_scene
-	return mob_scene
+func _pick_monster_kind_for_score(rng: RandomNumberGenerator) -> String:
+	if score >= score_for_heavy_monsters and rng.randf() < 0.55:
+		return "heavy"
+	if score >= score_for_medium_monsters and rng.randf() < 0.45:
+		return "medium"
+	return "slime"
+
+
+func _instantiate_mob_kind(mob_kind: String) -> Node:
+	match mob_kind:
+		"heavy":
+			return heavy_monster_scene.instantiate()
+		"medium":
+			return medium_monster_scene.instantiate()
+		_:
+			return mob_scene.instantiate()
+
+
+func _vector_to_payload(value: Vector2) -> Dictionary:
+	return {
+		"x": value.x,
+		"y": value.y
+	}
+
+
+func _payload_to_vector(value: Variant) -> Vector2:
+	if value is Dictionary:
+		return Vector2(
+			float(value.get("x", 0.0)),
+			float(value.get("y", 0.0))
+		)
+	return Vector2.ZERO
 
 
 func _ensure_scene_defaults() -> void:

@@ -5,6 +5,7 @@ extends Area2D
 
 var direction: Vector2 = Vector2.RIGHT
 var shooter: Node = null
+var visual_only := false
 
 @onready var life_timer: Timer = $LifeTimer
 @onready var impact_scene: PackedScene = preload("res://pistol/impact/impact.tscn")
@@ -14,6 +15,11 @@ func _ready() -> void:
 	add_to_group("projectiles")
 	life_timer.wait_time = life_time
 	life_timer.start()
+	if visual_only:
+		monitoring = false
+		collision_mask = 0
+		collision_layer = 0
+		return
 	body_entered.connect(_on_body_entered)
 
 
@@ -25,10 +31,20 @@ func _on_body_entered(body: Node) -> void:
 	if body == shooter:
 		return
 	var game := get_tree().current_scene
+	if body.is_in_group("network_mobs"):
+		if game and game.has_method("request_network_projectile_hit"):
+			game.request_network_projectile_hit(body)
+		_spawn_impact()
+		queue_free()
+		return
+
 	var killed := false
 	if body.is_in_group("mobs"):
 		if body.has_method("take_damage"):
-			killed = body.take_damage(1.0)
+			if game and game.has_method("apply_network_mob_damage"):
+				killed = game.apply_network_mob_damage(body, 1.0, true)
+			else:
+				killed = body.take_damage(1.0)
 		else:
 			body.queue_free()
 			killed = true

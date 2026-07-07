@@ -14,6 +14,7 @@ var is_dead := false
 var overlapping_mobs: Array[Node2D] = []
 var gun_unlocked_after_headstart := false
 var spawn_time_ms: int = 0
+var controls_locked := false
 
 @onready var bomb_scene: PackedScene = preload("res://bombs/bomb.tscn")
 @onready var health_bar: ProgressBar = $HealthBar
@@ -43,6 +44,11 @@ func _physics_process(_delta: float) -> void:
 		velocity = Vector2.ZERO
 		return
 	_update_headstart_gun_state()
+	if controls_locked:
+		velocity = Vector2.ZERO
+		move_and_slide()
+		$%HappyBoo.play_idle_animation()
+		return
 	var direction := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	velocity = direction * move_speed
 	move_and_slide()
@@ -200,6 +206,16 @@ func get_max_health() -> float:
 	return max_health
 
 
+func is_gun_active() -> bool:
+	return has_node("Gun") and gun_unlocked_after_headstart and not is_dead and not controls_locked
+
+
+func get_gun_aim_angle() -> float:
+	if not has_node("Gun"):
+		return 0.0
+	return $Gun.global_rotation
+
+
 func restore_from_run_state(restored_health: float, restored_max_health: float) -> void:
 	max_health = maxf(restored_max_health, 1.0)
 	current_health = clampf(restored_health, 0.0, max_health)
@@ -226,8 +242,15 @@ func _update_headstart_gun_state() -> void:
 		return
 	gun_unlocked_after_headstart = true
 	if has_node("Gun"):
-		$Gun.set_active(true)
+		$Gun.set_active(not controls_locked)
 
 
 func is_dead_state() -> bool:
 	return is_dead
+
+
+func set_controls_locked(locked: bool) -> void:
+	controls_locked = locked
+	velocity = Vector2.ZERO
+	if has_node("Gun"):
+		$Gun.set_active((not controls_locked) and gun_unlocked_after_headstart and not is_dead)

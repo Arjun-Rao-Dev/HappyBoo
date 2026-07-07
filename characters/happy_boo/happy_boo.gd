@@ -61,6 +61,10 @@ func apply_equipped_skin() -> void:
 	_apply_skin(skin_id)
 
 
+func apply_skin_id(skin_id: String) -> void:
+	_apply_skin(skin_id)
+
+
 func play_idle_animation():
 	%AnimationPlayer.play("idle")
 

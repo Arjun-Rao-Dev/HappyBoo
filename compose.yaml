@@ -1,0 +1,21 @@
+services:
+  happy-boo-server:
+    build:
+      context: ./server
+    container_name: happy-boo-server
+    environment:
+      PORT: "8080"
+      MAX_PLAYERS_PER_ROOM: "4"
+    ports:
+      - "8080:8080"
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: happy-boo-ngrok
+    depends_on:
+      - happy-boo-server
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    command: http happy-boo-server:8080
+    ports:
+      - "4040:4040"
