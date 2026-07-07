@@ -31,6 +31,7 @@ const TUTORIAL_KEYBOARD_STEPS: Array[String] = [
 
 var spawned_chunks: Dictionary = {}
 var score: int = 0
+var gun_score: int = 0
 var run_start_time_ms: int = 0
 var coins_awarded_this_run := false
 var tutorial_active := false
@@ -190,6 +191,7 @@ func _apply_continue_state_if_present() -> void:
 		return
 	if not import_run_state(pending_state):
 		score = 0
+		gun_score = 0
 		run_start_time_ms = Time.get_ticks_msec()
 
 
@@ -352,8 +354,11 @@ func _on_player_health_changed(current: float, maximum: float) -> void:
 	_update_hud_health_bar_color(current, maximum)
 
 
-func add_score(points: int = 1) -> void:
-	score += points
+func add_score(points: int = 1, counts_for_coins: bool = true) -> void:
+	var earned := maxi(points, 0)
+	score += earned
+	if counts_for_coins:
+		gun_score += earned
 	_update_score_label()
 
 
@@ -361,7 +366,7 @@ func _award_death_coins() -> int:
 	if coins_awarded_this_run:
 		return 0
 	coins_awarded_this_run = true
-	var earned := maxi(score, 0)
+	var earned := maxi(gun_score, 0)
 	SettingsManager.add_coins(earned)
 	return earned
 
@@ -403,6 +408,7 @@ func export_run_state() -> Dictionary:
 	var elapsed := float(Time.get_ticks_msec() - run_start_time_ms) / 1000.0
 	return {
 		"score": score,
+		"gun_score": gun_score,
 		"current_health": player.get_current_health(),
 		"max_health": player.get_max_health(),
 		"player_position": {
@@ -423,6 +429,7 @@ func import_run_state(state: Dictionary) -> bool:
 		return false
 
 	score = int(state.get("score", 0))
+	gun_score = int(state.get("gun_score", score))
 	player.global_position = Vector2(
 		float(position_data.get("x", player.global_position.x)),
 		float(position_data.get("y", player.global_position.y))

@@ -129,6 +129,7 @@ func _validate_run_state(run_state: Dictionary) -> Dictionary:
 		return {}
 
 	result["score"] = int(run_state.get("score", 0))
+	result["gun_score"] = int(run_state.get("gun_score", result["score"]))
 	result["current_health"] = float(run_state.get("current_health", 0.0))
 	result["max_health"] = float(run_state.get("max_health", 100.0))
 	result["player_position"] = {
