@@ -5,6 +5,7 @@ extends Area2D
 
 var direction: Vector2 = Vector2.RIGHT
 var shooter: Node = null
+var visual_only := false
 
 @onready var life_timer: Timer = $LifeTimer
 @onready var impact_scene: PackedScene = preload("res://pistol/impact/impact.tscn")
@@ -14,6 +15,11 @@ func _ready() -> void:
 	add_to_group("projectiles")
 	life_timer.wait_time = life_time
 	life_timer.start()
+	if visual_only:
+		monitoring = false
+		collision_mask = 0
+		collision_layer = 0
+		return
 	body_entered.connect(_on_body_entered)
 
 

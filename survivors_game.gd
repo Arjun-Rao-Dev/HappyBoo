@@ -1,8 +1,11 @@
 extends Node2D
 
 const REMOTE_PLAYER_SCENE: PackedScene = preload("res://multiplayer/remote_player.tscn")
+const PROJECTILE_SCENE: PackedScene = preload("res://pistol/projectile.tscn")
+const MUZZLE_FLASH_SCENE: PackedScene = preload("res://pistol/muzzle_flash/muzzle_flash.tscn")
 const MULTIPLAYER_STATE_SEND_INTERVAL := 0.08
 const MULTIPLAYER_MOB_STATE_SEND_INTERVAL := 0.12
+const ONLINE_MOB_SPAWN_CHANCE_PER_CHUNK := 0.75
 
 @export var tree_scene: PackedScene = preload("res://pine_tree.tscn")
 @export var mob_scene: PackedScene = preload("res://slime.tscn")
@@ -288,7 +291,8 @@ func _spawn_chunk_entities(chunk: Vector2i, chunk_origin: Vector2) -> void:
 			return
 		online_host_entity_chunks[chunk] = true
 
-	if mob_scene != null and medium_monster_scene != null and heavy_monster_scene != null and randf() <= mob_spawn_chance_per_chunk:
+	var mob_spawn_chance := ONLINE_MOB_SPAWN_CHANCE_PER_CHUNK if online_run else mob_spawn_chance_per_chunk
+	if mob_scene != null and medium_monster_scene != null and heavy_monster_scene != null and randf() <= mob_spawn_chance:
 		var scaled_mob_count: int = mobs_per_chunk + min(int(score / 20), 4)
 		var mob_rng := _chunk_rng(chunk, "mobs")
 		for _i in scaled_mob_count:
@@ -558,9 +562,34 @@ func _on_multiplayer_world_message_received(message: Dictionary) -> void:
 		"projectile_hit":
 			if online_is_host:
 				_apply_projectile_hit(message)
+		"projectile_fired":
+			_apply_remote_projectile_fired(message)
 		"bomb_exploded":
 			if online_is_host:
 				_apply_bomb_exploded(message)
+
+
+func handle_local_projectile_fired(position: Vector2, rotation: float) -> void:
+	if not online_run:
+		return
+	MultiplayerClient.send_world_message("projectile_fired", {
+		"position": _vector_to_payload(position),
+		"rotation": rotation
+	})
+
+
+func _apply_remote_projectile_fired(message: Dictionary) -> void:
+	var projectile := PROJECTILE_SCENE.instantiate()
+	projectile.visual_only = true
+	add_child(projectile)
+	projectile.global_position = _payload_to_vector(message.get("position", {}))
+	projectile.rotation = float(message.get("rotation", 0.0))
+	projectile.direction = Vector2.RIGHT.rotated(projectile.rotation)
+
+	var muzzle_flash := MUZZLE_FLASH_SCENE.instantiate()
+	add_child(muzzle_flash)
+	muzzle_flash.global_position = projectile.global_position
+	muzzle_flash.global_rotation = projectile.rotation
 
 
 func _register_host_mob(mob: Node, mob_kind: String) -> void:

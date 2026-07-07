@@ -29,16 +29,19 @@ func _on_fire_timer_timeout() -> void:
 
 func _fire_projectile() -> void:
 	var projectile := projectile_scene.instantiate()
-	get_tree().current_scene.add_child(projectile)
+	var current_scene := get_tree().current_scene
+	current_scene.add_child(projectile)
 	var shooter := get_parent()
 	if shooter != null:
 		projectile.shooter = shooter
 	projectile.global_position = muzzle.global_position
 	projectile.rotation = global_rotation
 	projectile.direction = Vector2.RIGHT.rotated(global_rotation)
+	if current_scene != null and current_scene.has_method("handle_local_projectile_fired"):
+		current_scene.handle_local_projectile_fired(muzzle.global_position, global_rotation)
 
 	var muzzle_flash := muzzle_flash_scene.instantiate()
-	get_tree().current_scene.add_child(muzzle_flash)
+	current_scene.add_child(muzzle_flash)
 	muzzle_flash.global_position = muzzle.global_position
 	muzzle_flash.global_rotation = global_rotation
 
