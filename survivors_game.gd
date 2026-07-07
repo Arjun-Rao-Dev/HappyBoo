@@ -3,7 +3,7 @@ extends Node2D
 const REMOTE_PLAYER_SCENE: PackedScene = preload("res://multiplayer/remote_player.tscn")
 const PROJECTILE_SCENE: PackedScene = preload("res://pistol/projectile.tscn")
 const MUZZLE_FLASH_SCENE: PackedScene = preload("res://pistol/muzzle_flash/muzzle_flash.tscn")
-const MULTIPLAYER_STATE_SEND_INTERVAL := 0.08
+const MULTIPLAYER_STATE_SEND_INTERVAL := 0.05
 const MULTIPLAYER_MOB_STATE_SEND_INTERVAL := 0.12
 const ONLINE_MOB_SPAWN_CHANCE_PER_CHUNK := 0.75
 
