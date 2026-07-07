@@ -29,6 +29,11 @@ func _on_fuse_timer_timeout() -> void:
 
 func _explode() -> void:
 	_spawn_explosion_visual()
+	var game := get_tree().current_scene
+	if game and game.has_method("request_network_bomb_explosion"):
+		if game.request_network_bomb_explosion(global_position, blast_radius, blast_damage):
+			queue_free()
+			return
 
 	var kills := 0
 	for mob in get_tree().get_nodes_in_group("mobs"):
@@ -45,7 +50,6 @@ func _explode() -> void:
 				mob.queue_free()
 				kills += 1
 
-	var game := get_tree().current_scene
 	if kills > 0 and game and game.has_method("add_score"):
 		game.add_score(kills, false)
 

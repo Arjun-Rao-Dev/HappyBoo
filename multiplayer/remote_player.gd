@@ -6,8 +6,11 @@ var target_position := Vector2.ZERO
 var _username := "Player"
 var _skin_id := "classic"
 var _animation_state := "idle"
+var _gun_active := false
+var _aim_angle := 0.0
 
 @onready var happy_boo = $HappyBoo
+@onready var gun_display: Node2D = $GunDisplay
 @onready var username_label: Label = $UsernameLabel
 
 
@@ -33,6 +36,8 @@ func apply_state(state: Dictionary) -> void:
 	_username = String(state.get("username", _username))
 	_skin_id = String(state.get("skin_id", _skin_id))
 	_animation_state = String(state.get("animation", _animation_state))
+	_gun_active = bool(state.get("gun_active", _gun_active))
+	_aim_angle = float(state.get("aim_angle", _aim_angle))
 	_apply_display_state()
 
 
@@ -44,3 +49,5 @@ func _apply_display_state() -> void:
 		happy_boo.play_walk_animation()
 	else:
 		happy_boo.play_idle_animation()
+	gun_display.visible = _gun_active
+	gun_display.global_rotation = _aim_angle

@@ -200,6 +200,16 @@ func get_max_health() -> float:
 	return max_health
 
 
+func is_gun_active() -> bool:
+	return has_node("Gun") and gun_unlocked_after_headstart and not is_dead
+
+
+func get_gun_aim_angle() -> float:
+	if not has_node("Gun"):
+		return 0.0
+	return $Gun.global_rotation
+
+
 func restore_from_run_state(restored_health: float, restored_max_health: float) -> void:
 	max_health = maxf(restored_max_health, 1.0)
 	current_health = clampf(restored_health, 0.0, max_health)

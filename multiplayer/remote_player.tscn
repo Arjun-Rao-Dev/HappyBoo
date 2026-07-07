@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://multiplayer/remote_player.gd" id="1_remote"]
 [ext_resource type="PackedScene" path="res://characters/happy_boo/happy_boo.tscn" id="2_boo"]
+[ext_resource type="Texture2D" path="res://pistol/pistol.png" id="3_pistol"]
 
 [node name="RemotePlayer" type="Node2D"]
 y_sort_enabled = true
@@ -10,6 +11,15 @@ script = ExtResource("1_remote")
 
 [node name="HappyBoo" parent="." instance=ExtResource("2_boo")]
 scale = Vector2(0.92, 0.92)
+
+[node name="GunDisplay" type="Node2D" parent="."]
+visible = false
+position = Vector2(0, 16)
+
+[node name="Sprite2D" type="Sprite2D" parent="GunDisplay"]
+position = Vector2(28, -8)
+texture = ExtResource("3_pistol")
+scale = Vector2(0.78, 0.78)
 
 [node name="UsernameBackdrop" type="ColorRect" parent="."]
 offset_left = -128.0

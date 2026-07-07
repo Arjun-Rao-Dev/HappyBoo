@@ -89,6 +89,7 @@ function joinRoom(socket, roomId) {
     rooms.set(roomId, new Set());
   }
   rooms.get(roomId).add(socket);
+  assignHost(roomId);
 }
 
 function leaveRoom(socket) {
@@ -99,6 +100,25 @@ function leaveRoom(socket) {
   room.delete(socket);
   if (room.size === 0) {
     rooms.delete(socket.roomId);
+    return;
+  }
+  assignHost(socket.roomId);
+}
+
+function assignHost(roomId) {
+  const room = rooms.get(roomId);
+  if (!room) {
+    return;
+  }
+
+  const host = room.values().next().value;
+  for (const socket of room) {
+    send(socket, {
+      type: "host_assigned",
+      host_player_id: host.playerId,
+      is_host: socket === host,
+      room_id: roomId
+    });
   }
 }
 
