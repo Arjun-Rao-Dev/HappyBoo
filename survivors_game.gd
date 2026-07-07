@@ -243,14 +243,32 @@ func _spawn_trees_around_player() -> void:
 	if online_run and not online_role_assigned:
 		return
 
-	var center_chunk := _world_to_chunk(player.global_position)
-	for x in range(center_chunk.x - active_chunk_radius, center_chunk.x + active_chunk_radius + 1):
-		for y in range(center_chunk.y - active_chunk_radius, center_chunk.y + active_chunk_radius + 1):
-			var chunk := Vector2i(x, y)
-			if spawned_chunks.has(chunk):
-				continue
-			_spawn_chunk(chunk)
-			spawned_chunks[chunk] = true
+	for center_position in _get_chunk_spawn_center_positions():
+		var center_chunk := _world_to_chunk(center_position)
+		for x in range(center_chunk.x - active_chunk_radius, center_chunk.x + active_chunk_radius + 1):
+			for y in range(center_chunk.y - active_chunk_radius, center_chunk.y + active_chunk_radius + 1):
+				var chunk := Vector2i(x, y)
+				if spawned_chunks.has(chunk):
+					continue
+				_spawn_chunk(chunk)
+				spawned_chunks[chunk] = true
+
+
+func _get_chunk_spawn_center_positions() -> Array[Vector2]:
+	var centers: Array[Vector2] = [player.global_position]
+	if not online_run or not online_is_host:
+		return centers
+	for remote_player in remote_players.values():
+		if remote_player is Node2D and is_instance_valid(remote_player):
+			centers.append((remote_player as Node2D).global_position)
+	return centers
+
+
+func _is_far_enough_from_spawn_centers(spawn_position: Vector2, minimum_distance: float) -> bool:
+	for center_position in _get_chunk_spawn_center_positions():
+		if spawn_position.distance_to(center_position) < minimum_distance:
+			return false
+	return true
 
 
 func _spawn_chunk(chunk: Vector2i) -> void:
@@ -266,7 +284,7 @@ func _spawn_chunk(chunk: Vector2i) -> void:
 				tree_rng.randf_range(0.0, chunk_size),
 				tree_rng.randf_range(0.0, chunk_size)
 			)
-			if spawn_position.distance_to(player.global_position) >= min_tree_distance_from_player:
+			if _is_far_enough_from_spawn_centers(spawn_position, min_tree_distance_from_player):
 				position_found = true
 				break
 		if not position_found:
@@ -303,7 +321,7 @@ func _spawn_chunk_entities(chunk: Vector2i, chunk_origin: Vector2) -> void:
 					mob_rng.randf_range(0.0, chunk_size),
 					mob_rng.randf_range(0.0, chunk_size)
 				)
-				if mob_spawn_position.distance_to(player.global_position) >= min_mob_distance_from_player:
+				if _is_far_enough_from_spawn_centers(mob_spawn_position, min_mob_distance_from_player):
 					mob_position_found = true
 					break
 			if not mob_position_found:
@@ -325,7 +343,7 @@ func _spawn_chunk_entities(chunk: Vector2i, chunk_origin: Vector2) -> void:
 					food_rng.randf_range(0.0, chunk_size),
 					food_rng.randf_range(0.0, chunk_size)
 				)
-				if food_spawn_position.distance_to(player.global_position) >= min_food_distance_from_player:
+				if _is_far_enough_from_spawn_centers(food_spawn_position, min_food_distance_from_player):
 					food_position_found = true
 					break
 			if not food_position_found:
