@@ -18,5 +18,8 @@ Thumbs.db
 # Logs
 *.log
 
+# Local secrets
+.env
+
 # Node dependencies
 node_modules/
