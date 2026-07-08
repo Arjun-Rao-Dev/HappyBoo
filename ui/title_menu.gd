@@ -14,6 +14,7 @@ const KenneyUI = preload("res://ui/kenney_ui.gd")
 @onready var new_run_button: Button = $CenterContainer/Panel/Margin/VBox/NewRunButton
 @onready var quit_button: Button = $CenterContainer/Panel/Margin/VBox/QuitButton
 @onready var status_label: Label = $CenterContainer/Panel/Margin/VBox/StatusLabel
+@onready var modal_overlay: ColorRect = $ModalOverlay
 @onready var options_panel = $OptionsPanel
 @onready var store_panel = $StorePanel
 
@@ -91,21 +92,25 @@ func _on_multiplayer_pressed() -> void:
 
 func _on_options_pressed() -> void:
 	store_panel.hide_panel()
+	modal_overlay.visible = true
 	options_panel.show_panel()
 
 
 func _on_store_pressed() -> void:
 	options_panel.hide_panel()
+	modal_overlay.visible = true
 	store_panel.show_panel()
 
 
 func _on_options_closed() -> void:
 	options_panel.hide_panel()
+	modal_overlay.visible = false
 	_refresh_continue_state()
 
 
 func _on_store_closed() -> void:
 	store_panel.hide_panel()
+	modal_overlay.visible = false
 	_refresh_continue_state()
 
 
