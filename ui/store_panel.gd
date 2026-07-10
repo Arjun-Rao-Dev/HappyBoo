@@ -2,6 +2,7 @@ extends PanelContainer
 
 const KenneyUI = preload("res://ui/kenney_ui.gd")
 const PREVIEW_SIZE := Vector2(70.0, 70.0)
+const STORE_URL := "https://store.arjunrao.dev"
 const SKIN_CATALOG: Array[Dictionary] = [
 	{"id": "classic", "name": "Classic Boo", "price": 0, "preview": "res://characters/happy_boo/square_ref.png"},
 	{"id": "berry", "name": "Berry Boo", "price": 25, "preview": "res://characters/happy_boo/skins/berry/preview.png"},
@@ -16,12 +17,15 @@ signal closed
 @onready var coins_label: Label = $Margin/VBox/HeaderRow/CoinsLabel
 @onready var skins_container: VBoxContainer = $Margin/VBox/SkinsContainer
 @onready var status_label: Label = $Margin/VBox/StatusLabel
+@onready var store_message_label: Label = $Margin/VBox/BottomRow/StoreMessageLabel
+@onready var store_button: Button = $Margin/VBox/BottomRow/StoreButton
 @onready var close_button: Button = $Margin/VBox/BottomRow/CloseButton
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	visible = false
+	store_button.pressed.connect(_on_store_pressed)
 	close_button.pressed.connect(_on_close_pressed)
 	_apply_kenney_style()
 	refresh()
@@ -126,6 +130,12 @@ func _on_equip_pressed(skin_id: String) -> void:
 	refresh()
 
 
+func _on_store_pressed() -> void:
+	var error := OS.shell_open(STORE_URL)
+	if error != OK:
+		status_label.text = "Could not open store."
+
+
 func _on_close_pressed() -> void:
 	hide_panel()
 	emit_signal("closed")
@@ -136,4 +146,6 @@ func _apply_kenney_style() -> void:
 	KenneyUI.apply_title_label(title_label, 30)
 	KenneyUI.apply_heading(coins_label, 18)
 	KenneyUI.apply_body_label(status_label, 15)
+	KenneyUI.apply_body_label(store_message_label, 15)
+	KenneyUI.apply_yellow_button(store_button)
 	KenneyUI.apply_secondary_button(close_button)
