@@ -4,6 +4,48 @@ const SETTINGS_PATH := "user://settings.json"
 const SETTINGS_VERSION := 1
 const USERNAME_REGEX := "^[A-Za-z0-9_]{3,16}$"
 const DEFAULT_SKIN_ID := "classic"
+const MODIFIER_CATALOG: Array[Dictionary] = [
+	{
+		"id": "disable_bombs",
+		"name": "Disable Bombs",
+		"description": "Bombs cannot be thrown during the run."
+	},
+	{
+		"id": "disable_coins",
+		"name": "Disable Coins",
+		"description": "Score still works, but the run awards no coins."
+	},
+	{
+		"id": "disable_food",
+		"name": "Disable Food",
+		"description": "Food pickups do not spawn."
+	},
+	{
+		"id": "disable_pistol",
+		"name": "Disable Pistol",
+		"description": "The automatic pistol never activates."
+	},
+	{
+		"id": "double_enemy_spawns",
+		"name": "Double Enemy Spawns",
+		"description": "Chunks spawn twice as many mobs."
+	},
+	{
+		"id": "no_headstart",
+		"name": "No Headstart",
+		"description": "The 5-second safe start is removed."
+	},
+	{
+		"id": "one_health",
+		"name": "One Health",
+		"description": "Happy Boo starts with 1 max health."
+	},
+	{
+		"id": "fast_enemies",
+		"name": "Fast Enemies",
+		"description": "Enemies move faster."
+	}
+]
 const TRACKED_ACTIONS: Array[StringName] = [
 	&"move_left",
 	&"move_right",
@@ -14,6 +56,8 @@ const TRACKED_ACTIONS: Array[StringName] = [
 ]
 
 var _settings_cache: Dictionary = {}
+var _selected_modifiers: Dictionary = {}
+var _pending_run_modifiers: Dictionary = {}
 var _default_bindings: Dictionary = {
 	"move_left": KEY_A,
 	"move_right": KEY_D,
@@ -116,6 +160,59 @@ func get_settings_snapshot() -> Dictionary:
 		"controls": _extract_controls_snapshot(),
 		"profile": _extract_profile_snapshot()
 	}
+
+
+func get_modifier_catalog() -> Array[Dictionary]:
+	return MODIFIER_CATALOG.duplicate(true)
+
+
+func get_modifier_name(modifier_id: String) -> String:
+	for modifier in MODIFIER_CATALOG:
+		if String(modifier.get("id", "")) == modifier_id:
+			return String(modifier.get("name", modifier_id))
+	return modifier_id.capitalize()
+
+
+func get_selected_modifiers() -> Dictionary:
+	return _selected_modifiers.duplicate(true)
+
+
+func set_modifier_enabled(modifier_id: String, enabled: bool) -> void:
+	if not _is_known_modifier(modifier_id):
+		return
+	if enabled:
+		_selected_modifiers[modifier_id] = true
+	else:
+		_selected_modifiers.erase(modifier_id)
+
+
+func reset_selected_modifiers() -> void:
+	_selected_modifiers.clear()
+
+
+func queue_selected_modifiers_for_new_run() -> void:
+	_pending_run_modifiers = _selected_modifiers.duplicate(true)
+
+
+func clear_pending_run_modifiers() -> void:
+	_pending_run_modifiers.clear()
+
+
+func consume_pending_run_modifiers() -> Dictionary:
+	var copied := _pending_run_modifiers.duplicate(true)
+	_pending_run_modifiers.clear()
+	return copied
+
+
+func has_selected_modifiers() -> bool:
+	return not _selected_modifiers.is_empty()
+
+
+func _is_known_modifier(modifier_id: String) -> bool:
+	for modifier in MODIFIER_CATALOG:
+		if String(modifier.get("id", "")) == modifier_id:
+			return true
+	return false
 
 
 func has_username() -> bool:

@@ -1,8 +1,9 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://ui/title_menu.gd" id="1_mk5d4"]
 [ext_resource type="PackedScene" path="res://ui/options_panel.tscn" id="2_jfgx4"]
 [ext_resource type="PackedScene" path="res://ui/store_panel.tscn" id="3_store"]
+[ext_resource type="PackedScene" path="res://ui/modifiers_panel.tscn" id="4_modifiers"]
 
 [node name="TitleMenu" type="Control"]
 layout_mode = 3
@@ -77,6 +78,11 @@ custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
 text = "Multiplayer"
 
+[node name="ModifiersButton" type="Button" parent="CenterContainer/Panel/Margin/VBox" unique_name_in_owner=true]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+text = "Modifiers"
+
 [node name="StoreButton" type="Button" parent="CenterContainer/Panel/Margin/VBox" unique_name_in_owner=true]
 custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
@@ -107,6 +113,10 @@ mouse_filter = 0
 color = Color(0, 0, 0, 0.82)
 
 [node name="OptionsPanel" parent="." unique_name_in_owner=true instance=ExtResource("2_jfgx4")]
+layout_mode = 1
+
+[node name="ModifiersPanel" parent="." unique_name_in_owner=true instance=ExtResource("4_modifiers")]
+visible = false
 layout_mode = 1
 
 [node name="StorePanel" parent="." unique_name_in_owner=true instance=ExtResource("3_store")]

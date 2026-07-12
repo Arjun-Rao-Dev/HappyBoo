@@ -9,6 +9,7 @@ const KenneyUI = preload("res://ui/kenney_ui.gd")
 @onready var coins_label: Label = $CenterContainer/Panel/Margin/VBox/CoinsLabel
 @onready var continue_button: Button = $CenterContainer/Panel/Margin/VBox/ContinueButton
 @onready var multiplayer_button: Button = $CenterContainer/Panel/Margin/VBox/MultiplayerButton
+@onready var modifiers_button: Button = $CenterContainer/Panel/Margin/VBox/ModifiersButton
 @onready var store_button: Button = $CenterContainer/Panel/Margin/VBox/StoreButton
 @onready var options_button: Button = $CenterContainer/Panel/Margin/VBox/OptionsButton
 @onready var new_run_button: Button = $CenterContainer/Panel/Margin/VBox/NewRunButton
@@ -16,6 +17,7 @@ const KenneyUI = preload("res://ui/kenney_ui.gd")
 @onready var status_label: Label = $CenterContainer/Panel/Margin/VBox/StatusLabel
 @onready var modal_overlay: ColorRect = $ModalOverlay
 @onready var options_panel = $OptionsPanel
+@onready var modifiers_panel = $ModifiersPanel
 @onready var store_panel = $StorePanel
 
 
@@ -26,11 +28,13 @@ func _ready() -> void:
 	_apply_kenney_style()
 	continue_button.pressed.connect(_on_continue_pressed)
 	multiplayer_button.pressed.connect(_on_multiplayer_pressed)
+	modifiers_button.pressed.connect(_on_modifiers_pressed)
 	store_button.pressed.connect(_on_store_pressed)
 	options_button.pressed.connect(_on_options_pressed)
 	new_run_button.pressed.connect(_on_new_run_pressed)
 	quit_button.pressed.connect(_on_quit_pressed)
 	options_panel.closed.connect(_on_options_closed)
+	modifiers_panel.closed.connect(_on_modifiers_closed)
 	store_panel.closed.connect(_on_store_closed)
 	_refresh_continue_state()
 	if continue_button.disabled:
@@ -48,6 +52,7 @@ func _apply_kenney_style() -> void:
 	KenneyUI.apply_primary_button(new_run_button)
 	KenneyUI.apply_info_button(continue_button)
 	KenneyUI.apply_info_button(multiplayer_button)
+	KenneyUI.apply_yellow_button(modifiers_button)
 	KenneyUI.apply_yellow_button(store_button)
 	KenneyUI.apply_secondary_button(options_button)
 	KenneyUI.apply_danger_button(quit_button)
@@ -67,6 +72,7 @@ func _refresh_continue_state() -> void:
 func _on_new_run_pressed() -> void:
 	MultiplayerClient.disconnect_from_server()
 	SaveManager.clear_pending_continue_run()
+	SettingsManager.queue_selected_modifiers_for_new_run()
 	get_tree().change_scene_to_file("res://survivors_game.tscn")
 
 
@@ -74,36 +80,54 @@ func _on_continue_pressed() -> void:
 	var result := SaveManager.load_run()
 	if bool(result.get("ok", false)):
 		SaveManager.queue_continue_run(result.get("run_state", {}))
+		SettingsManager.clear_pending_run_modifiers()
 		MultiplayerClient.disconnect_from_server()
 		get_tree().change_scene_to_file("res://survivors_game.tscn")
 		return
 
 	status_label.text = "Continue failed (%s). Starting a new run." % String(result.get("status", "error"))
 	SaveManager.clear_pending_continue_run()
+	SettingsManager.clear_pending_run_modifiers()
 	MultiplayerClient.disconnect_from_server()
 	get_tree().change_scene_to_file("res://survivors_game.tscn")
 
 
 func _on_multiplayer_pressed() -> void:
 	SaveManager.clear_pending_continue_run()
+	SettingsManager.clear_pending_run_modifiers()
 	MultiplayerClient.request_online_run()
 	get_tree().change_scene_to_file("res://survivors_game.tscn")
 
 
 func _on_options_pressed() -> void:
+	modifiers_panel.hide_panel()
 	store_panel.hide_panel()
 	modal_overlay.visible = true
 	options_panel.show_panel()
 
 
+func _on_modifiers_pressed() -> void:
+	options_panel.hide_panel()
+	store_panel.hide_panel()
+	modal_overlay.visible = true
+	modifiers_panel.show_panel()
+
+
 func _on_store_pressed() -> void:
 	options_panel.hide_panel()
+	modifiers_panel.hide_panel()
 	modal_overlay.visible = true
 	store_panel.show_panel()
 
 
 func _on_options_closed() -> void:
 	options_panel.hide_panel()
+	modal_overlay.visible = false
+	_refresh_continue_state()
+
+
+func _on_modifiers_closed() -> void:
+	modifiers_panel.hide_panel()
 	modal_overlay.visible = false
 	_refresh_continue_state()
 

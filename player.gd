@@ -15,6 +15,8 @@ var overlapping_mobs: Array[Node2D] = []
 var gun_unlocked_after_headstart := false
 var spawn_time_ms: int = 0
 var controls_locked := false
+var bombs_disabled := false
+var pistol_disabled := false
 
 @onready var bomb_scene: PackedScene = preload("res://bombs/bomb.tscn")
 @onready var health_bar: ProgressBar = $HealthBar
@@ -183,6 +185,8 @@ func _try_throw_bomb() -> void:
 
 
 func can_throw_bomb() -> bool:
+	if bombs_disabled:
+		return false
 	return (not is_dead) and bomb_cooldown_timer.is_stopped() and current_health >= max_health
 
 
@@ -237,6 +241,10 @@ func _update_username_label() -> void:
 func _update_headstart_gun_state() -> void:
 	if gun_unlocked_after_headstart:
 		return
+	if pistol_disabled:
+		if has_node("Gun"):
+			$Gun.set_active(false)
+		return
 	var elapsed_seconds := float(Time.get_ticks_msec() - spawn_time_ms) / 1000.0
 	if elapsed_seconds < start_invulnerable_seconds:
 		return
@@ -253,4 +261,14 @@ func set_controls_locked(locked: bool) -> void:
 	controls_locked = locked
 	velocity = Vector2.ZERO
 	if has_node("Gun"):
-		$Gun.set_active((not controls_locked) and gun_unlocked_after_headstart and not is_dead)
+		$Gun.set_active((not controls_locked) and gun_unlocked_after_headstart and not is_dead and not pistol_disabled)
+
+
+func set_bombs_disabled(disabled: bool) -> void:
+	bombs_disabled = disabled
+
+
+func set_pistol_disabled(disabled: bool) -> void:
+	pistol_disabled = disabled
+	if pistol_disabled and has_node("Gun"):
+		$Gun.set_active(false)

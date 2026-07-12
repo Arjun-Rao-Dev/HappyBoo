@@ -10,6 +10,7 @@ const CHAT_MAX_LENGTH := 120
 const CHAT_MAX_VISIBLE_MESSAGES := 6
 const CHAT_MESSAGE_VISIBLE_SECONDS := 8.0
 const CHAT_SEND_COOLDOWN_SECONDS := 0.5
+const FAST_ENEMY_SPEED_MULTIPLIER := 1.5
 
 @export var tree_scene: PackedScene = preload("res://pine_tree.tscn")
 @export var mob_scene: PackedScene = preload("res://slime.tscn")
@@ -62,6 +63,7 @@ var next_network_food_id := 1
 var chat_messages: Array[Dictionary] = []
 var chat_input_active := false
 var chat_send_cooldown := 0.0
+var active_modifiers: Dictionary = {}
 var chat_panel: PanelContainer
 var chat_log_label: Label
 var chat_input: LineEdit
@@ -74,8 +76,10 @@ var chat_input: LineEdit
 @onready var quit_to_title_button: Button = $GameOverUI/GameOverPanel/CenterBox/VBoxContainer/QuitToTitleButton
 @onready var score_label: Label = $HUD/TopLeftPanel/Margin/VBox/ScoreLabel
 @onready var bomb_cooldown_ui = $HUD/TopLeftPanel/Margin/VBox/BombRow/BombCooldownUI
+@onready var bomb_label: Label = $HUD/TopLeftPanel/Margin/VBox/BombRow/BombLabel
 @onready var health_bar: ProgressBar = $HUD/TopLeftPanel/Margin/VBox/HealthBar
 @onready var controls_hint_label: Label = $HUD/TopLeftPanel/Margin/VBox/ControlsHintLabel
+@onready var modifier_summary_label: Label = $HUD/TopLeftPanel/Margin/VBox/ModifierSummaryLabel
 @onready var multiplayer_status_label: Label = $HUD/TopLeftPanel/Margin/VBox/MultiplayerStatusLabel
 @onready var pause_menu = $PauseMenu
 @onready var crosshair = $Crosshair
@@ -92,6 +96,7 @@ func _ready() -> void:
 	randomize()
 	_ensure_scene_defaults()
 	SettingsManager.load_settings()
+	active_modifiers = SettingsManager.consume_pending_run_modifiers()
 	Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
 	game_over_ui.visible = false
 	game_over_ui.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
@@ -123,16 +128,18 @@ func _ready() -> void:
 	pause_menu.resume_requested.connect(_on_pause_resume_requested)
 	pause_menu.save_requested.connect(_on_pause_save_requested)
 	pause_menu.quit_to_title_requested.connect(_on_quit_to_title_pressed)
-	pause_menu.set_save_enabled(true)
+	pause_menu.set_save_enabled(not _has_active_modifiers())
 	tutorial_next_button.pressed.connect(_on_tutorial_next_pressed)
 	tutorial_skip_button.pressed.connect(_on_tutorial_skip_pressed)
 	_build_chat_ui()
 
 	run_start_time_ms = Time.get_ticks_msec()
+	_apply_run_modifiers()
 	_apply_continue_state_if_present()
 	_update_score_label()
 	_on_player_health_changed(player.get_current_health(), player.get_max_health())
 	_update_controls_hint_label()
+	_update_modifier_summary_label()
 	_setup_multiplayer_if_requested()
 	_maybe_start_first_run_tutorial()
 	_spawn_trees_around_player()
@@ -211,6 +218,7 @@ func _process(_delta: float) -> void:
 		player.can_throw_bomb(),
 		player.is_full_health()
 	)
+	bomb_label.text = "Bombs disabled" if _is_modifier_enabled("disable_bombs") else "Bomb"
 	_update_controls_hint_label()
 	_process_multiplayer_state(_delta)
 	_process_chat(_delta)
@@ -260,6 +268,20 @@ func _apply_continue_state_if_present() -> void:
 		score = 0
 		gun_score = 0
 		run_start_time_ms = Time.get_ticks_msec()
+
+
+func _apply_run_modifiers() -> void:
+	if active_modifiers.is_empty():
+		return
+	if _is_modifier_enabled("disable_bombs") and player.has_method("set_bombs_disabled"):
+		player.set_bombs_disabled(true)
+	if _is_modifier_enabled("disable_pistol") and player.has_method("set_pistol_disabled"):
+		player.set_pistol_disabled(true)
+	if _is_modifier_enabled("no_headstart"):
+		if player.get("start_invulnerable_seconds") != null:
+			player.set("start_invulnerable_seconds", 0.0)
+	if _is_modifier_enabled("one_health"):
+		player.restore_from_run_state(1.0, 1.0)
 
 
 func _open_pause_menu() -> void:
@@ -346,6 +368,8 @@ func _spawn_chunk_entities(chunk: Vector2i, chunk_origin: Vector2) -> void:
 	var mob_spawn_chance := ONLINE_MOB_SPAWN_CHANCE_PER_CHUNK if online_run else mob_spawn_chance_per_chunk
 	if mob_scene != null and medium_monster_scene != null and heavy_monster_scene != null and randf() <= mob_spawn_chance:
 		var scaled_mob_count: int = mobs_per_chunk + min(int(score / 20), 4)
+		if _is_modifier_enabled("double_enemy_spawns"):
+			scaled_mob_count *= 2
 		var mob_rng := _chunk_rng(chunk, "mobs")
 		for _i in scaled_mob_count:
 			var mob_position_found := false
@@ -362,10 +386,14 @@ func _spawn_chunk_entities(chunk: Vector2i, chunk_origin: Vector2) -> void:
 				continue
 			var mob_kind := _pick_monster_kind_for_score(mob_rng)
 			var mob := _instantiate_mob_kind(mob_kind)
+			_apply_mob_modifiers(mob)
 			add_child(mob)
 			mob.global_position = mob_spawn_position
 			if online_run and online_is_host:
 				_register_host_mob(mob, mob_kind)
+
+	if _is_modifier_enabled("disable_food"):
+		return
 
 	var food_rng := _chunk_rng(chunk, "foods")
 	if food_scene != null and food_rng.randf() <= food_spawn_chance_per_chunk:
@@ -412,11 +440,19 @@ func _on_player_died() -> void:
 	tutorial_active = false
 	var earned_coins := _award_death_coins()
 	game_over_ui.visible = true
-	game_over_rewards_label.text = "Score: %d\nCoins earned: %d\nTotal coins: %d" % [
+	var rewards_text := "Score: %d\nCoins earned: %d\nTotal coins: %d" % [
 		score,
 		earned_coins,
 		SettingsManager.get_coin_balance()
 	]
+	if _is_modifier_enabled("disable_coins"):
+		rewards_text = "Score: %d\nCoins disabled by modifier\nTotal coins: %d" % [
+			score,
+			SettingsManager.get_coin_balance()
+		]
+	if _has_active_modifiers():
+		rewards_text += "\nModifiers: %s" % _get_modifier_summary_text()
+	game_over_rewards_label.text = rewards_text
 	crosshair.visible = false
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	game_music.stream_paused = true
@@ -459,6 +495,8 @@ func _on_game_music_finished() -> void:
 
 
 func _on_pause_save_requested() -> void:
+	if _has_active_modifiers():
+		return
 	SaveManager.save_run(export_run_state())
 
 
@@ -480,6 +518,8 @@ func _award_death_coins() -> int:
 	if coins_awarded_this_run:
 		return 0
 	coins_awarded_this_run = true
+	if _is_modifier_enabled("disable_coins"):
+		return 0
 	var earned := maxi(gun_score, 0)
 	SettingsManager.add_coins(earned)
 	return earned
@@ -492,7 +532,15 @@ func _update_score_label() -> void:
 func _update_controls_hint_label() -> void:
 	var bomb_key := SettingsManager.get_action_binding_text(&"throw_bomb")
 	var pause_key := SettingsManager.get_action_binding_text(&"pause")
-	controls_hint_label.text = "Aim: Mouse | Bomb: %s | Pause: %s" % [bomb_key, pause_key]
+	var parts: Array[String] = ["Aim: Mouse"]
+	if _is_modifier_enabled("disable_pistol"):
+		parts.append("Pistol disabled")
+	if _is_modifier_enabled("disable_bombs"):
+		parts.append("Bombs disabled")
+	else:
+		parts.append("Bomb: %s" % bomb_key)
+	parts.append("Pause: %s" % pause_key)
+	controls_hint_label.text = " | ".join(parts)
 
 
 func _build_chat_ui() -> void:
@@ -1116,6 +1164,42 @@ func _instantiate_mob_kind(mob_kind: String) -> Node:
 			return medium_monster_scene.instantiate()
 		_:
 			return mob_scene.instantiate()
+
+
+func _apply_mob_modifiers(mob: Node) -> void:
+	if _is_modifier_enabled("no_headstart") and mob.get("headstart_seconds") != null:
+		mob.set("headstart_seconds", 0.0)
+	if _is_modifier_enabled("fast_enemies") and mob.get("move_speed") != null:
+		mob.set("move_speed", float(mob.get("move_speed")) * FAST_ENEMY_SPEED_MULTIPLIER)
+
+
+func _is_modifier_enabled(modifier_id: String) -> bool:
+	return bool(active_modifiers.get(modifier_id, false))
+
+
+func _has_active_modifiers() -> bool:
+	return not active_modifiers.is_empty()
+
+
+func _get_active_modifier_names() -> Array[String]:
+	var names: Array[String] = []
+	for modifier in SettingsManager.get_modifier_catalog():
+		var modifier_id := String(modifier.get("id", ""))
+		if _is_modifier_enabled(modifier_id):
+			names.append(String(modifier.get("name", SettingsManager.get_modifier_name(modifier_id))))
+	return names
+
+
+func _get_modifier_summary_text() -> String:
+	var names := _get_active_modifier_names()
+	if names.is_empty():
+		return "None"
+	return ", ".join(names)
+
+
+func _update_modifier_summary_label() -> void:
+	modifier_summary_label.visible = _has_active_modifiers()
+	modifier_summary_label.text = "Modifiers: %s" % _get_modifier_summary_text()
 
 
 func _vector_to_payload(value: Vector2) -> Dictionary:
