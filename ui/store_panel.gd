@@ -5,10 +5,10 @@ const PREVIEW_SIZE := Vector2(70.0, 70.0)
 const STORE_URL := "https://store.arjunrao.dev"
 const SKIN_CATALOG: Array[Dictionary] = [
 	{"id": "classic", "name": "Classic Boo", "price": 0, "preview": "res://characters/happy_boo/square_ref.png"},
-	{"id": "berry", "name": "Berry Boo", "price": 25, "preview": "res://characters/happy_boo/skins/berry/preview.png"},
-	{"id": "mint", "name": "Mint Boo", "price": 50, "preview": "res://characters/happy_boo/skins/mint/preview.png"},
-	{"id": "gold", "name": "Gold Boo", "price": 100, "preview": "res://characters/happy_boo/skins/gold/preview.png"},
-	{"id": "sappy", "name": "Sappy Boo", "price": 150, "preview": "res://characters/happy_boo/skins/sappy/preview.png"}
+	{"id": "berry", "name": "Berry Boo", "price": 75, "preview": "res://characters/happy_boo/skins/berry/preview.png"},
+	{"id": "mint", "name": "Mint Boo", "price": 125, "preview": "res://characters/happy_boo/skins/mint/preview.png"},
+	{"id": "gold", "name": "Gold Boo", "price": 250, "preview": "res://characters/happy_boo/skins/gold/preview.png"},
+	{"id": "sappy", "name": "Sappy Boo", "price": 350, "preview": "res://characters/happy_boo/skins/sappy/preview.png"}
 ]
 
 signal closed

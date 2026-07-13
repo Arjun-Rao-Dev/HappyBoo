@@ -17,13 +17,14 @@ const RACE_CAR_RADIAL_FIRE_INTERVAL := 0.5
 const RACE_CAR_RADIAL_SHOTS := 12
 const RACE_CAR_PROJECTILE_DAMAGE := 1.0
 const RACE_CAR_PROJECTILE_SPEED := 1350.0
+const RACE_CAR_MIN_SCORE := 50
 
 @export var tree_scene: PackedScene = preload("res://pine_tree.tscn")
 @export var mob_scene: PackedScene = preload("res://slime.tscn")
 @export var medium_monster_scene: PackedScene = preload("res://monsters/monster_bee.tscn")
 @export var heavy_monster_scene: PackedScene = preload("res://monsters/monster_spike.tscn")
 @export var food_scene: PackedScene = preload("res://food/food_pickup.tscn")
-@export var race_car_spawn_chance_per_chunk: float = 0.03
+@export var race_car_spawn_chance_per_chunk: float = 0.015
 @export var chunk_size: float = 900.0
 @export var active_chunk_radius: int = 2
 @export var trees_per_chunk: int = 10
@@ -439,7 +440,7 @@ func _spawn_chunk_entities(chunk: Vector2i, chunk_origin: Vector2) -> void:
 					_register_host_food(food, texture_index, visual_scale)
 
 	var powerup_rng := _chunk_rng(chunk, "race_car")
-	if RACE_CAR_PICKUP_SCENE != null and powerup_rng.randf() <= race_car_spawn_chance_per_chunk:
+	if score >= RACE_CAR_MIN_SCORE and RACE_CAR_PICKUP_SCENE != null and powerup_rng.randf() <= race_car_spawn_chance_per_chunk:
 		var powerup_position_found := false
 		var powerup_spawn_position := Vector2.ZERO
 		for _attempt in spawn_attempts_per_powerup:

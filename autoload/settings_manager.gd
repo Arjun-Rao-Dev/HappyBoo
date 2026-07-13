@@ -23,7 +23,7 @@ const WEAPON_CATALOG: Array[Dictionary] = [
 	{
 		"id": "raygun",
 		"name": "Raygun",
-		"price": 75,
+		"price": 200,
 		"preview": "res://weapons/assets/raygun.png",
 		"description": "Fires faster than the pistol.",
 		"fire_interval": 0.34,
@@ -37,7 +37,7 @@ const WEAPON_CATALOG: Array[Dictionary] = [
 	{
 		"id": "heavy_raygun",
 		"name": "Heavy Raygun",
-		"price": 150,
+		"price": 400,
 		"preview": "res://weapons/assets/raygun_big.png",
 		"description": "Slower shots with heavier damage.",
 		"fire_interval": 0.68,
