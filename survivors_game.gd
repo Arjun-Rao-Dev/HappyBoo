@@ -17,7 +17,7 @@ const RACE_CAR_RADIAL_FIRE_INTERVAL := 0.5
 const RACE_CAR_RADIAL_SHOTS := 12
 const RACE_CAR_PROJECTILE_DAMAGE := 1.0
 const RACE_CAR_PROJECTILE_SPEED := 1350.0
-const RACE_CAR_MIN_SCORE := 50
+const RACE_CAR_MIN_SCORE := 40
 
 @export var tree_scene: PackedScene = preload("res://pine_tree.tscn")
 @export var mob_scene: PackedScene = preload("res://slime.tscn")
