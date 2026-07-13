@@ -4,7 +4,7 @@ extends Node2D
 @export var projectile_damage: float = 1.0
 @export var projectile_speed: float = 1200.0
 @export var projectile_scale: float = 1.0
-@export var weapon_visual_scale: float = 1.3
+@export var weapon_visual_scale: float = 0.78
 @export var shot_count: int = 1
 @export var spread_degrees: float = 0.0
 @export var projectile_color: Color = Color.WHITE
@@ -107,6 +107,7 @@ func apply_weapon_data(weapon_data: Dictionary) -> void:
 	projectile_damage = float(_base_weapon_data.get("damage", projectile_damage))
 	projectile_speed = float(_base_weapon_data.get("projectile_speed", projectile_speed))
 	projectile_scale = float(_base_weapon_data.get("projectile_scale", projectile_scale))
+	weapon_visual_scale = float(_base_weapon_data.get("weapon_visual_scale", weapon_visual_scale))
 	shot_count = maxi(int(_base_weapon_data.get("shot_count", shot_count)), 1)
 	spread_degrees = maxf(float(_base_weapon_data.get("spread_degrees", spread_degrees)), 0.0)
 	projectile_color = _base_weapon_data.get("projectile_color", projectile_color)
@@ -114,6 +115,7 @@ func apply_weapon_data(weapon_data: Dictionary) -> void:
 	if not preview_path.is_empty() and ResourceLoader.exists(preview_path):
 		weapon_sprite.texture = load(preview_path) as Texture2D
 	weapon_sprite.scale = Vector2.ONE * weapon_visual_scale
+	muzzle.position = _base_weapon_data.get("muzzle_position", muzzle.position)
 	_apply_upgrade_level(_upgrade_level)
 
 

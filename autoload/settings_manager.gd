@@ -16,6 +16,8 @@ const WEAPON_CATALOG: Array[Dictionary] = [
 		"damage": 1.0,
 		"projectile_speed": 1200.0,
 		"projectile_scale": 1.0,
+		"weapon_visual_scale": 0.78,
+		"muzzle_position": Vector2(50.0, -8.0),
 		"shot_count": 1,
 		"spread_degrees": 0.0,
 		"projectile_color": Color.WHITE
@@ -30,6 +32,8 @@ const WEAPON_CATALOG: Array[Dictionary] = [
 		"damage": 1.0,
 		"projectile_speed": 1350.0,
 		"projectile_scale": 1.05,
+		"weapon_visual_scale": 2.0,
+		"muzzle_position": Vector2(98.0, -8.0),
 		"shot_count": 1,
 		"spread_degrees": 0.0,
 		"projectile_color": Color(0.3, 0.85, 1.0, 1.0)
@@ -44,6 +48,8 @@ const WEAPON_CATALOG: Array[Dictionary] = [
 		"damage": 2.0,
 		"projectile_speed": 1100.0,
 		"projectile_scale": 1.25,
+		"weapon_visual_scale": 2.15,
+		"muzzle_position": Vector2(106.0, -8.0),
 		"shot_count": 1,
 		"spread_degrees": 0.0,
 		"projectile_color": Color(0.75, 0.45, 1.0, 1.0)
