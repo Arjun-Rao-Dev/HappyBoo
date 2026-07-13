@@ -13,7 +13,7 @@ const CHAT_MESSAGE_VISIBLE_SECONDS := 8.0
 const CHAT_SEND_COOLDOWN_SECONDS := 0.5
 const FAST_ENEMY_SPEED_MULTIPLIER := 1.5
 const RACE_CAR_DURATION_SECONDS := 10.0
-const RACE_CAR_RADIAL_FIRE_INTERVAL := 0.28
+const RACE_CAR_RADIAL_FIRE_INTERVAL := 0.5
 const RACE_CAR_RADIAL_SHOTS := 12
 const RACE_CAR_PROJECTILE_DAMAGE := 1.0
 const RACE_CAR_PROJECTILE_SPEED := 1350.0
@@ -23,7 +23,7 @@ const RACE_CAR_PROJECTILE_SPEED := 1350.0
 @export var medium_monster_scene: PackedScene = preload("res://monsters/monster_bee.tscn")
 @export var heavy_monster_scene: PackedScene = preload("res://monsters/monster_spike.tscn")
 @export var food_scene: PackedScene = preload("res://food/food_pickup.tscn")
-@export var race_car_spawn_chance_per_chunk: float = 0.08
+@export var race_car_spawn_chance_per_chunk: float = 0.03
 @export var chunk_size: float = 900.0
 @export var active_chunk_radius: int = 2
 @export var trees_per_chunk: int = 10
@@ -1055,14 +1055,20 @@ func _broadcast_mob_states() -> void:
 		})
 
 
-func apply_network_mob_damage(mob: Node, amount: float, counts_for_coins: bool) -> bool:
+func apply_network_mob_damage(mob: Node, amount: float, counts_for_coins: bool, knockback_direction: Vector2 = Vector2.ZERO, knockback_force: float = 0.0) -> bool:
 	if not online_run:
+		if mob.has_method("apply_knockback") and knockback_force > 0.0:
+			mob.apply_knockback(knockback_direction, knockback_force)
 		return mob.take_damage(amount) if mob.has_method("take_damage") else false
 	if not online_is_host:
 		return false
 	var mob_id := String(mob.get_meta("network_id", ""))
 	if mob_id.is_empty():
+		if mob.has_method("apply_knockback") and knockback_force > 0.0:
+			mob.apply_knockback(knockback_direction, knockback_force)
 		return mob.take_damage(amount) if mob.has_method("take_damage") else false
+	if mob.has_method("apply_knockback") and knockback_force > 0.0:
+		mob.apply_knockback(knockback_direction, knockback_force)
 	var killed: bool = mob.take_damage(amount) if mob.has_method("take_damage") else false
 	if killed:
 		network_mobs.erase(mob_id)
@@ -1073,17 +1079,22 @@ func apply_network_mob_damage(mob: Node, amount: float, counts_for_coins: bool) 
 	return killed
 
 
-func request_network_projectile_hit(mob: Node, damage: float = 1.0) -> void:
+func request_network_projectile_hit(mob: Node, damage: float = 1.0, knockback_direction: Vector2 = Vector2.ZERO, knockback_force: float = 0.0) -> void:
 	if not online_run:
 		return
 	var mob_id := String(mob.get_meta("network_id", ""))
 	if mob_id.is_empty():
 		return
 	if online_is_host:
-		if apply_network_mob_damage(mob, damage, true):
+		if apply_network_mob_damage(mob, damage, true, knockback_direction, knockback_force):
 			add_score(1)
 	else:
-		MultiplayerClient.send_world_message("projectile_hit", {"mob_id": mob_id, "damage": damage})
+		MultiplayerClient.send_world_message("projectile_hit", {
+			"mob_id": mob_id,
+			"damage": damage,
+			"knockback_direction": _vector_to_payload(knockback_direction),
+			"knockback_force": knockback_force
+		})
 
 
 func request_network_bomb_explosion(origin: Vector2, radius: float, damage: float) -> bool:
@@ -1104,7 +1115,13 @@ func _apply_projectile_hit(message: Dictionary) -> void:
 	var mob_id := String(message.get("mob_id", ""))
 	var mob: Node = network_mobs.get(mob_id, null)
 	if mob != null and is_instance_valid(mob):
-		if apply_network_mob_damage(mob, float(message.get("damage", 1.0)), true):
+		if apply_network_mob_damage(
+			mob,
+			float(message.get("damage", 1.0)),
+			true,
+			_payload_to_vector(message.get("knockback_direction", {})),
+			float(message.get("knockback_force", 0.0))
+		):
 			add_score(1)
 
 

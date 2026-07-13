@@ -4,6 +4,7 @@ extends Node2D
 @export var projectile_damage: float = 1.0
 @export var projectile_speed: float = 1200.0
 @export var projectile_scale: float = 1.0
+@export var weapon_visual_scale: float = 1.3
 @export var shot_count: int = 1
 @export var spread_degrees: float = 0.0
 @export var projectile_color: Color = Color.WHITE
@@ -112,6 +113,7 @@ func apply_weapon_data(weapon_data: Dictionary) -> void:
 	var preview_path := String(_base_weapon_data.get("preview", ""))
 	if not preview_path.is_empty() and ResourceLoader.exists(preview_path):
 		weapon_sprite.texture = load(preview_path) as Texture2D
+	weapon_sprite.scale = Vector2.ONE * weapon_visual_scale
 	_apply_upgrade_level(_upgrade_level)
 
 

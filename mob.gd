@@ -4,10 +4,12 @@ extends CharacterBody2D
 @export var headstart_seconds: float = 5.0
 @export var max_health: float = 1.0
 @export var contact_damage: float = 12.0
+@export var knockback_decay: float = 9.0
 
 var player: Node2D
 var spawn_time_ms: int = 0
 var current_health: float = 1.0
+var knockback_velocity := Vector2.ZERO
 
 
 func _ready() -> void:
@@ -17,20 +19,25 @@ func _ready() -> void:
 	current_health = max_health
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	var elapsed_seconds := float(Time.get_ticks_msec() - spawn_time_ms) / 1000.0
 	if elapsed_seconds < headstart_seconds:
-		velocity = Vector2.ZERO
+		velocity = knockback_velocity
+		knockback_velocity = knockback_velocity.move_toward(Vector2.ZERO, knockback_decay * knockback_velocity.length() * delta)
+		move_and_slide()
 		return
 
 	if player == null or not is_instance_valid(player):
 		player = _find_target_player()
 	if player == null:
-		velocity = Vector2.ZERO
+		velocity = knockback_velocity
+		knockback_velocity = knockback_velocity.move_toward(Vector2.ZERO, knockback_decay * knockback_velocity.length() * delta)
+		move_and_slide()
 		return
 
 	var direction := global_position.direction_to(player.global_position)
-	velocity = direction * move_speed
+	velocity = direction * move_speed + knockback_velocity
+	knockback_velocity = knockback_velocity.move_toward(Vector2.ZERO, knockback_decay * knockback_velocity.length() * delta)
 	move_and_slide()
 
 
@@ -40,6 +47,12 @@ func take_damage(amount: float) -> bool:
 		return false
 	queue_free()
 	return true
+
+
+func apply_knockback(direction: Vector2, force: float) -> void:
+	if direction.length_squared() <= 0.0:
+		return
+	knockback_velocity += direction.normalized() * maxf(force, 0.0)
 
 
 func get_contact_damage() -> float:

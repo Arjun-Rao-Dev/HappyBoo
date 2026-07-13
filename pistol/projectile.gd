@@ -3,6 +3,7 @@ extends Area2D
 @export var speed: float = 1200.0
 @export var life_time: float = 2.0
 @export var damage: float = 1.0
+@export var knockback_force: float = 260.0
 
 var direction: Vector2 = Vector2.RIGHT
 var shooter: Node = null
@@ -34,13 +35,15 @@ func _on_body_entered(body: Node) -> void:
 	var game := get_tree().current_scene
 	if body.is_in_group("network_mobs"):
 		if game and game.has_method("request_network_projectile_hit"):
-			game.request_network_projectile_hit(body, damage)
+			game.request_network_projectile_hit(body, damage, direction, knockback_force)
 		_spawn_impact()
 		queue_free()
 		return
 
 	var killed := false
 	if body.is_in_group("mobs"):
+		if body.has_method("apply_knockback"):
+			body.apply_knockback(direction, knockback_force)
 		if body.has_method("take_damage"):
 			if game and game.has_method("apply_network_mob_damage"):
 				killed = game.apply_network_mob_damage(body, damage, true)
