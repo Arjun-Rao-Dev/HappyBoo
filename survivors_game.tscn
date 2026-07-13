@@ -78,6 +78,11 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 28
 text = "Score: 0"
 
+[node name="WeaponLabel" type="Label" parent="HUD/TopLeftPanel/Margin/VBox" unique_name_in_owner=true]
+layout_mode = 2
+text = "Weapon: Pistol Lv. 1"
+autowrap_mode = 3
+
 [node name="BombRow" type="HBoxContainer" parent="HUD/TopLeftPanel/Margin/VBox" unique_id=729243307]
 layout_mode = 2
 
@@ -104,6 +109,19 @@ visible = false
 layout_mode = 2
 text = "Multiplayer: Disconnected"
 autowrap_mode = 3
+
+[node name="NotificationLabel" type="Label" parent="HUD" unique_name_in_owner=true]
+visible = false
+offset_left = 438.0
+offset_top = 26.0
+offset_right = 1038.0
+offset_bottom = 72.0
+theme_override_colors/font_color = Color(1, 0.93, 0.32, 1)
+theme_override_colors/font_outline_color = Color(0.04, 0.07, 0.12, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 28
+text = "Upgrade!"
+horizontal_alignment = 1
 
 [node name="PauseMenu" parent="." unique_id=481937668 instance=ExtResource("6_ky5ah")]
 

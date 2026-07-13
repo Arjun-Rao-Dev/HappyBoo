@@ -17,8 +17,12 @@ var spawn_time_ms: int = 0
 var controls_locked := false
 var bombs_disabled := false
 var pistol_disabled := false
+var car_mode_active := false
 
 @onready var bomb_scene: PackedScene = preload("res://bombs/bomb.tscn")
+@onready var happy_boo = $%HappyBoo
+@onready var gun = $Gun
+@onready var car_sprite: Sprite2D = $CarSprite
 @onready var health_bar: ProgressBar = $HealthBar
 @onready var username_label: Label = $UsernameLabel
 @onready var hurtbox: Area2D = $Hurtbox
@@ -37,8 +41,10 @@ func _ready() -> void:
 	health_bar.visible = false
 	_update_username_label()
 	emit_signal("health_changed", current_health, max_health)
-	if has_node("Gun"):
-		$Gun.set_active(false)
+	if gun.has_method("apply_weapon_data"):
+		gun.apply_weapon_data(SettingsManager.get_weapon_data())
+	gun.set_active(false)
+	car_sprite.visible = false
 
 
 func _physics_process(_delta: float) -> void:
@@ -49,17 +55,21 @@ func _physics_process(_delta: float) -> void:
 	if controls_locked:
 		velocity = Vector2.ZERO
 		move_and_slide()
-		$%HappyBoo.play_idle_animation()
+		if not car_mode_active:
+			happy_boo.play_idle_animation()
 		return
 	var direction := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	velocity = direction * move_speed
 	move_and_slide()
+	if car_mode_active and velocity.length() > 0.1:
+		car_sprite.rotation = velocity.angle()
 	_try_throw_bomb()
 	
-	if velocity.length() > 0.0:
-		$%HappyBoo.play_walk_animation()
-	else: 
-		$%HappyBoo.play_idle_animation()
+	if not car_mode_active:
+		if velocity.length() > 0.0:
+			happy_boo.play_walk_animation()
+		else:
+			happy_boo.play_idle_animation()
 
 
 func _on_hurtbox_body_entered(body: Node2D) -> void:
@@ -74,6 +84,8 @@ func _on_hurtbox_body_exited(body: Node2D) -> void:
 
 func _on_damage_timer_timeout() -> void:
 	if is_dead:
+		return
+	if car_mode_active:
 		return
 	var elapsed_seconds := float(Time.get_ticks_msec() - spawn_time_ms) / 1000.0
 	if elapsed_seconds < start_invulnerable_seconds:
@@ -133,6 +145,8 @@ func heal(amount: float) -> void:
 
 func take_projectile_damage(amount: float) -> bool:
 	if is_dead:
+		return false
+	if car_mode_active:
 		return false
 	var elapsed_seconds := float(Time.get_ticks_msec() - spawn_time_ms) / 1000.0
 	if elapsed_seconds < start_invulnerable_seconds:
@@ -211,13 +225,13 @@ func get_max_health() -> float:
 
 
 func is_gun_active() -> bool:
-	return has_node("Gun") and gun_unlocked_after_headstart and not is_dead and not controls_locked
+	return has_node("Gun") and gun_unlocked_after_headstart and not is_dead and not controls_locked and not pistol_disabled
 
 
 func get_gun_aim_angle() -> float:
-	if not has_node("Gun"):
+	if gun == null:
 		return 0.0
-	return $Gun.global_rotation
+	return gun.global_rotation
 
 
 func restore_from_run_state(restored_health: float, restored_max_health: float) -> void:
@@ -242,15 +256,13 @@ func _update_headstart_gun_state() -> void:
 	if gun_unlocked_after_headstart:
 		return
 	if pistol_disabled:
-		if has_node("Gun"):
-			$Gun.set_active(false)
+		gun.set_active(false)
 		return
 	var elapsed_seconds := float(Time.get_ticks_msec() - spawn_time_ms) / 1000.0
 	if elapsed_seconds < start_invulnerable_seconds:
 		return
 	gun_unlocked_after_headstart = true
-	if has_node("Gun"):
-		$Gun.set_active(not controls_locked)
+	gun.set_active(not controls_locked)
 
 
 func is_dead_state() -> bool:
@@ -260,8 +272,7 @@ func is_dead_state() -> bool:
 func set_controls_locked(locked: bool) -> void:
 	controls_locked = locked
 	velocity = Vector2.ZERO
-	if has_node("Gun"):
-		$Gun.set_active((not controls_locked) and gun_unlocked_after_headstart and not is_dead and not pistol_disabled)
+	gun.set_active((not controls_locked) and gun_unlocked_after_headstart and not is_dead and not pistol_disabled)
 
 
 func set_bombs_disabled(disabled: bool) -> void:
@@ -270,5 +281,28 @@ func set_bombs_disabled(disabled: bool) -> void:
 
 func set_pistol_disabled(disabled: bool) -> void:
 	pistol_disabled = disabled
-	if pistol_disabled and has_node("Gun"):
-		$Gun.set_active(false)
+	if pistol_disabled:
+		gun.set_active(false)
+
+
+func apply_weapon_upgrade(level: int) -> void:
+	if gun.has_method("set_upgrade_level"):
+		gun.set_upgrade_level(level)
+
+
+func get_weapon_display_name() -> String:
+	if gun.has_method("get_weapon_name"):
+		return String(gun.get_weapon_name())
+	return "Pistol"
+
+
+func set_car_mode_active(active: bool) -> void:
+	car_mode_active = active
+	happy_boo.visible = not active
+	car_sprite.visible = active
+	if active:
+		car_sprite.rotation = velocity.angle() if velocity.length() > 0.1 else 0.0
+
+
+func is_car_mode_active() -> bool:
+	return car_mode_active

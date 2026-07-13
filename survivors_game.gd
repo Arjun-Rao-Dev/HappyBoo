@@ -3,6 +3,7 @@ extends Node2D
 const REMOTE_PLAYER_SCENE: PackedScene = preload("res://multiplayer/remote_player.tscn")
 const PROJECTILE_SCENE: PackedScene = preload("res://pistol/projectile.tscn")
 const MUZZLE_FLASH_SCENE: PackedScene = preload("res://pistol/muzzle_flash/muzzle_flash.tscn")
+const RACE_CAR_PICKUP_SCENE: PackedScene = preload("res://powerups/race_car_pickup.tscn")
 const MULTIPLAYER_STATE_SEND_INTERVAL := 0.05
 const MULTIPLAYER_MOB_STATE_SEND_INTERVAL := 0.12
 const ONLINE_MOB_SPAWN_CHANCE_PER_CHUNK := 0.75
@@ -11,12 +12,18 @@ const CHAT_MAX_VISIBLE_MESSAGES := 6
 const CHAT_MESSAGE_VISIBLE_SECONDS := 8.0
 const CHAT_SEND_COOLDOWN_SECONDS := 0.5
 const FAST_ENEMY_SPEED_MULTIPLIER := 1.5
+const RACE_CAR_DURATION_SECONDS := 10.0
+const RACE_CAR_RADIAL_FIRE_INTERVAL := 0.28
+const RACE_CAR_RADIAL_SHOTS := 12
+const RACE_CAR_PROJECTILE_DAMAGE := 1.0
+const RACE_CAR_PROJECTILE_SPEED := 1350.0
 
 @export var tree_scene: PackedScene = preload("res://pine_tree.tscn")
 @export var mob_scene: PackedScene = preload("res://slime.tscn")
 @export var medium_monster_scene: PackedScene = preload("res://monsters/monster_bee.tscn")
 @export var heavy_monster_scene: PackedScene = preload("res://monsters/monster_spike.tscn")
 @export var food_scene: PackedScene = preload("res://food/food_pickup.tscn")
+@export var race_car_spawn_chance_per_chunk: float = 0.08
 @export var chunk_size: float = 900.0
 @export var active_chunk_radius: int = 2
 @export var trees_per_chunk: int = 10
@@ -27,15 +34,17 @@ const FAST_ENEMY_SPEED_MULTIPLIER := 1.5
 @export var min_tree_distance_from_player: float = 160.0
 @export var min_mob_distance_from_player: float = 300.0
 @export var min_food_distance_from_player: float = 140.0
+@export var min_powerup_distance_from_player: float = 180.0
 @export var spawn_attempts_per_tree: int = 8
 @export var spawn_attempts_per_mob: int = 8
 @export var spawn_attempts_per_food: int = 8
+@export var spawn_attempts_per_powerup: int = 8
 @export var score_for_medium_monsters: int = 12
 @export var score_for_heavy_monsters: int = 35
 const TREE_ROTATION_VARIATION := 0.08
 const TUTORIAL_KEYBOARD_STEPS: Array[String] = [
 	"Use WASD or the arrow keys to move around the map.",
-	"Aim with the mouse. Your pistol auto-fires every 0.5 seconds once the headstart ends.",
+	"Aim with the mouse. Your equipped weapon auto-fires once the headstart ends.",
 	"Pick up food to heal 20 health. Staying healthy also lets you use bombs.",
 	"Bombs only work at full health. Press Z to throw one toward your cursor.",
 	"Goal: stay alive, clear slimes, and keep your score climbing."
@@ -64,6 +73,12 @@ var chat_messages: Array[Dictionary] = []
 var chat_input_active := false
 var chat_send_cooldown := 0.0
 var active_modifiers: Dictionary = {}
+var weapon_upgrade_level := 0
+var next_weapon_upgrade_score := 10
+var next_weapon_upgrade_gap := 20
+var notification_seconds_left := 0.0
+var race_car_seconds_left := 0.0
+var race_car_fire_accumulator := 0.0
 var chat_panel: PanelContainer
 var chat_log_label: Label
 var chat_input: LineEdit
@@ -75,6 +90,7 @@ var chat_input: LineEdit
 @onready var restart_button: Button = $GameOverUI/GameOverPanel/CenterBox/VBoxContainer/RestartButton
 @onready var quit_to_title_button: Button = $GameOverUI/GameOverPanel/CenterBox/VBoxContainer/QuitToTitleButton
 @onready var score_label: Label = $HUD/TopLeftPanel/Margin/VBox/ScoreLabel
+@onready var weapon_label: Label = $HUD/TopLeftPanel/Margin/VBox/WeaponLabel
 @onready var bomb_cooldown_ui = $HUD/TopLeftPanel/Margin/VBox/BombRow/BombCooldownUI
 @onready var bomb_label: Label = $HUD/TopLeftPanel/Margin/VBox/BombRow/BombLabel
 @onready var health_bar: ProgressBar = $HUD/TopLeftPanel/Margin/VBox/HealthBar
@@ -89,6 +105,7 @@ var chat_input: LineEdit
 @onready var tutorial_progress_label: Label = $TutorialUI/TutorialPanel/CenterBox/Panel/Margin/VBox/Progress
 @onready var tutorial_next_button: Button = $TutorialUI/TutorialPanel/CenterBox/Panel/Margin/VBox/ButtonRow/NextButton
 @onready var tutorial_skip_button: Button = $TutorialUI/TutorialPanel/CenterBox/Panel/Margin/VBox/ButtonRow/SkipButton
+@onready var notification_label: Label = $HUD/NotificationLabel
 var hud_health_fill_style: StyleBoxFlat
 
 
@@ -137,6 +154,7 @@ func _ready() -> void:
 	_apply_run_modifiers()
 	_apply_continue_state_if_present()
 	_update_score_label()
+	_update_weapon_label()
 	_on_player_health_changed(player.get_current_health(), player.get_max_health())
 	_update_controls_hint_label()
 	_update_modifier_summary_label()
@@ -220,6 +238,8 @@ func _process(_delta: float) -> void:
 	)
 	bomb_label.text = "Bombs disabled" if _is_modifier_enabled("disable_bombs") else "Bomb"
 	_update_controls_hint_label()
+	_process_notification(_delta)
+	_process_race_car_mode(_delta)
 	_process_multiplayer_state(_delta)
 	_process_chat(_delta)
 
@@ -392,33 +412,48 @@ func _spawn_chunk_entities(chunk: Vector2i, chunk_origin: Vector2) -> void:
 			if online_run and online_is_host:
 				_register_host_mob(mob, mob_kind)
 
-	if _is_modifier_enabled("disable_food"):
-		return
+	if not _is_modifier_enabled("disable_food"):
+		var food_rng := _chunk_rng(chunk, "foods")
+		if food_scene != null and food_rng.randf() <= food_spawn_chance_per_chunk:
+			for _i in foods_per_chunk:
+				var food_position_found := false
+				var food_spawn_position := Vector2.ZERO
+				for _attempt in spawn_attempts_per_food:
+					food_spawn_position = chunk_origin + Vector2(
+						food_rng.randf_range(0.0, chunk_size),
+						food_rng.randf_range(0.0, chunk_size)
+					)
+					if _is_far_enough_from_spawn_centers(food_spawn_position, min_food_distance_from_player):
+						food_position_found = true
+						break
+				if not food_position_found:
+					continue
+				var food := food_scene.instantiate()
+				add_child(food)
+				food.global_position = food_spawn_position
+				if online_run and online_is_host:
+					var texture_index := food_rng.randi_range(0, 11)
+					var visual_scale := food_rng.randf_range(1.6, 2.1)
+					if food.has_method("apply_network_visual"):
+						food.apply_network_visual(texture_index, visual_scale)
+					_register_host_food(food, texture_index, visual_scale)
 
-	var food_rng := _chunk_rng(chunk, "foods")
-	if food_scene != null and food_rng.randf() <= food_spawn_chance_per_chunk:
-		for _i in foods_per_chunk:
-			var food_position_found := false
-			var food_spawn_position := Vector2.ZERO
-			for _attempt in spawn_attempts_per_food:
-				food_spawn_position = chunk_origin + Vector2(
-					food_rng.randf_range(0.0, chunk_size),
-					food_rng.randf_range(0.0, chunk_size)
-				)
-				if _is_far_enough_from_spawn_centers(food_spawn_position, min_food_distance_from_player):
-					food_position_found = true
-					break
-			if not food_position_found:
-				continue
-			var food := food_scene.instantiate()
-			add_child(food)
-			food.global_position = food_spawn_position
-			if online_run and online_is_host:
-				var texture_index := food_rng.randi_range(0, 11)
-				var visual_scale := food_rng.randf_range(1.6, 2.1)
-				if food.has_method("apply_network_visual"):
-					food.apply_network_visual(texture_index, visual_scale)
-				_register_host_food(food, texture_index, visual_scale)
+	var powerup_rng := _chunk_rng(chunk, "race_car")
+	if RACE_CAR_PICKUP_SCENE != null and powerup_rng.randf() <= race_car_spawn_chance_per_chunk:
+		var powerup_position_found := false
+		var powerup_spawn_position := Vector2.ZERO
+		for _attempt in spawn_attempts_per_powerup:
+			powerup_spawn_position = chunk_origin + Vector2(
+				powerup_rng.randf_range(0.0, chunk_size),
+				powerup_rng.randf_range(0.0, chunk_size)
+			)
+			if _is_far_enough_from_spawn_centers(powerup_spawn_position, min_powerup_distance_from_player):
+				powerup_position_found = true
+				break
+		if powerup_position_found:
+			var powerup := RACE_CAR_PICKUP_SCENE.instantiate()
+			add_child(powerup)
+			powerup.global_position = powerup_spawn_position
 
 
 func _world_to_chunk(world_position: Vector2) -> Vector2i:
@@ -511,6 +546,8 @@ func add_score(points: int = 1, counts_for_coins: bool = true) -> void:
 	score += earned
 	if counts_for_coins:
 		gun_score += earned
+	if earned > 0:
+		_check_weapon_upgrades()
 	_update_score_label()
 
 
@@ -527,6 +564,55 @@ func _award_death_coins() -> int:
 
 func _update_score_label() -> void:
 	score_label.text = "Score: %d" % score
+
+
+func _update_weapon_label() -> void:
+	if weapon_label == null:
+		return
+	var mode_text := " | Car: %.0fs" % ceil(race_car_seconds_left) if race_car_seconds_left > 0.0 else ""
+	weapon_label.text = "Weapon: %s Lv. %d%s" % [
+		player.get_weapon_display_name(),
+		weapon_upgrade_level + 1,
+		mode_text
+	]
+
+
+func _check_weapon_upgrades() -> void:
+	while score >= next_weapon_upgrade_score:
+		weapon_upgrade_level += 1
+		next_weapon_upgrade_score += next_weapon_upgrade_gap
+		next_weapon_upgrade_gap += 10
+		if player.has_method("apply_weapon_upgrade"):
+			player.apply_weapon_upgrade(weapon_upgrade_level)
+		_show_notification("Weapon upgrade! Lv. %d" % (weapon_upgrade_level + 1))
+	_update_weapon_label()
+
+
+func _sync_weapon_upgrades_for_score() -> void:
+	weapon_upgrade_level = 0
+	next_weapon_upgrade_score = 10
+	next_weapon_upgrade_gap = 20
+	while score >= next_weapon_upgrade_score:
+		weapon_upgrade_level += 1
+		next_weapon_upgrade_score += next_weapon_upgrade_gap
+		next_weapon_upgrade_gap += 10
+	if player.has_method("apply_weapon_upgrade"):
+		player.apply_weapon_upgrade(weapon_upgrade_level)
+	_update_weapon_label()
+
+
+func _show_notification(text: String) -> void:
+	notification_label.text = text
+	notification_label.visible = true
+	notification_seconds_left = 2.4
+
+
+func _process_notification(delta: float) -> void:
+	if notification_seconds_left <= 0.0:
+		notification_label.visible = false
+		return
+	notification_seconds_left = maxf(notification_seconds_left - delta, 0.0)
+	notification_label.visible = notification_seconds_left > 0.0
 
 
 func _update_controls_hint_label() -> void:
@@ -811,12 +897,16 @@ func _apply_chat_message(message: Dictionary) -> void:
 	)
 
 
-func handle_local_projectile_fired(position: Vector2, rotation: float) -> void:
+func handle_local_projectile_fired(position: Vector2, rotation: float, damage: float = 1.0, projectile_speed: float = 1200.0, projectile_scale: float = 1.0, projectile_color: Color = Color.WHITE) -> void:
 	if not online_run:
 		return
 	MultiplayerClient.send_world_message("projectile_fired", {
 		"position": _vector_to_payload(position),
-		"rotation": rotation
+		"rotation": rotation,
+		"damage": damage,
+		"speed": projectile_speed,
+		"scale": projectile_scale,
+		"color": _color_to_payload(projectile_color)
 	})
 
 
@@ -827,6 +917,10 @@ func _apply_remote_projectile_fired(message: Dictionary) -> void:
 	projectile.global_position = _payload_to_vector(message.get("position", {}))
 	projectile.rotation = float(message.get("rotation", 0.0))
 	projectile.direction = Vector2.RIGHT.rotated(projectile.rotation)
+	projectile.damage = float(message.get("damage", 1.0))
+	projectile.speed = float(message.get("speed", 1200.0))
+	projectile.scale = Vector2.ONE * float(message.get("scale", 1.0))
+	projectile.modulate = _payload_to_color(message.get("color", {}), Color.WHITE)
 
 	var muzzle_flash := MUZZLE_FLASH_SCENE.instantiate()
 	add_child(muzzle_flash)
@@ -979,17 +1073,17 @@ func apply_network_mob_damage(mob: Node, amount: float, counts_for_coins: bool) 
 	return killed
 
 
-func request_network_projectile_hit(mob: Node) -> void:
+func request_network_projectile_hit(mob: Node, damage: float = 1.0) -> void:
 	if not online_run:
 		return
 	var mob_id := String(mob.get_meta("network_id", ""))
 	if mob_id.is_empty():
 		return
 	if online_is_host:
-		if apply_network_mob_damage(mob, 1.0, true):
+		if apply_network_mob_damage(mob, damage, true):
 			add_score(1)
 	else:
-		MultiplayerClient.send_world_message("projectile_hit", {"mob_id": mob_id, "damage": 1.0})
+		MultiplayerClient.send_world_message("projectile_hit", {"mob_id": mob_id, "damage": damage})
 
 
 func request_network_bomb_explosion(origin: Vector2, radius: float, damage: float) -> bool:
@@ -1049,6 +1143,68 @@ func handle_food_pickup(food: Node, body: Node) -> void:
 		_apply_food_collected(food_id, MultiplayerClient.local_player_id)
 	else:
 		MultiplayerClient.send_world_message("food_collect", {"food_id": food_id})
+
+
+func handle_race_car_pickup(powerup: Node, body: Node) -> void:
+	if body != player:
+		return
+	_start_race_car_mode()
+	powerup.queue_free()
+
+
+func _start_race_car_mode() -> void:
+	race_car_seconds_left = RACE_CAR_DURATION_SECONDS
+	race_car_fire_accumulator = RACE_CAR_RADIAL_FIRE_INTERVAL
+	if player.has_method("set_car_mode_active"):
+		player.set_car_mode_active(true)
+	_show_notification("Race car mode! 10 seconds")
+	_update_weapon_label()
+
+
+func _process_race_car_mode(delta: float) -> void:
+	if race_car_seconds_left <= 0.0:
+		return
+	race_car_seconds_left = maxf(race_car_seconds_left - delta, 0.0)
+	race_car_fire_accumulator += delta
+	while race_car_fire_accumulator >= RACE_CAR_RADIAL_FIRE_INTERVAL:
+		race_car_fire_accumulator -= RACE_CAR_RADIAL_FIRE_INTERVAL
+		_fire_race_car_radial_burst()
+	if race_car_seconds_left <= 0.0:
+		if player.has_method("set_car_mode_active"):
+			player.set_car_mode_active(false)
+		_show_notification("Race car power ended")
+	_update_weapon_label()
+
+
+func _fire_race_car_radial_burst() -> void:
+	if player == null or player.is_dead_state():
+		return
+	if _is_modifier_enabled("disable_pistol"):
+		return
+	for index in range(RACE_CAR_RADIAL_SHOTS):
+		var angle := TAU * float(index) / float(RACE_CAR_RADIAL_SHOTS)
+		_spawn_local_projectile(
+			player.global_position + Vector2.RIGHT.rotated(angle) * 60.0,
+			angle,
+			RACE_CAR_PROJECTILE_DAMAGE,
+			RACE_CAR_PROJECTILE_SPEED,
+			0.9,
+			Color(1.0, 0.72, 0.18, 1.0)
+		)
+
+
+func _spawn_local_projectile(position: Vector2, rotation: float, damage: float, projectile_speed: float, projectile_scale: float, projectile_color: Color) -> void:
+	var projectile := PROJECTILE_SCENE.instantiate()
+	add_child(projectile)
+	projectile.shooter = player
+	projectile.global_position = position
+	projectile.rotation = rotation
+	projectile.direction = Vector2.RIGHT.rotated(rotation)
+	projectile.damage = damage
+	projectile.speed = projectile_speed
+	projectile.scale = Vector2.ONE * projectile_scale
+	projectile.modulate = projectile_color
+	handle_local_projectile_fired(position, rotation, damage, projectile_speed, projectile_scale, projectile_color)
 
 
 func _apply_food_collected(food_id: String, collector_player_id: String) -> void:
@@ -1144,6 +1300,7 @@ func import_run_state(state: Dictionary) -> bool:
 	)
 	var elapsed := maxf(float(state.get("elapsed_run_time_sec", 0.0)), 0.0)
 	run_start_time_ms = Time.get_ticks_msec() - int(elapsed * 1000.0)
+	_sync_weapon_upgrades_for_score()
 	_update_score_label()
 	return true
 
@@ -1207,6 +1364,26 @@ func _vector_to_payload(value: Vector2) -> Dictionary:
 		"x": value.x,
 		"y": value.y
 	}
+
+
+func _color_to_payload(value: Color) -> Dictionary:
+	return {
+		"r": value.r,
+		"g": value.g,
+		"b": value.b,
+		"a": value.a
+	}
+
+
+func _payload_to_color(value: Variant, fallback: Color) -> Color:
+	if value is Dictionary:
+		return Color(
+			float(value.get("r", fallback.r)),
+			float(value.get("g", fallback.g)),
+			float(value.get("b", fallback.b)),
+			float(value.get("a", fallback.a))
+		)
+	return fallback
 
 
 func _payload_to_vector(value: Variant) -> Vector2:

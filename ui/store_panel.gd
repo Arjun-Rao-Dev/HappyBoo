@@ -15,7 +15,7 @@ signal closed
 
 @onready var title_label: Label = $Margin/VBox/HeaderRow/Title
 @onready var coins_label: Label = $Margin/VBox/HeaderRow/CoinsLabel
-@onready var skins_container: VBoxContainer = $Margin/VBox/SkinsContainer
+@onready var catalog_container: VBoxContainer = $Margin/VBox/Scroll/CatalogContainer
 @onready var status_label: Label = $Margin/VBox/StatusLabel
 @onready var store_message_label: Label = $Margin/VBox/BottomRow/StoreMessageLabel
 @onready var store_button: Button = $Margin/VBox/BottomRow/StoreButton
@@ -45,11 +45,23 @@ func hide_panel() -> void:
 
 func refresh() -> void:
 	coins_label.text = "Coins: %d" % SettingsManager.get_coin_balance()
-	for child in skins_container.get_children():
+	for child in catalog_container.get_children():
 		child.queue_free()
 
+	_add_section_heading("Skins")
 	for skin in SKIN_CATALOG:
 		_add_skin_row(skin)
+	_add_section_heading("Weapons")
+	for weapon in SettingsManager.get_weapon_catalog():
+		_add_weapon_row(weapon)
+
+
+func _add_section_heading(text: String) -> void:
+	var heading := Label.new()
+	heading.text = text
+	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	catalog_container.add_child(heading)
+	KenneyUI.apply_title_label(heading, 22)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -101,8 +113,66 @@ func _add_skin_row(skin: Dictionary) -> void:
 		action_button.pressed.connect(_on_buy_pressed.bind(skin_id, price))
 	row.add_child(action_button)
 
-	skins_container.add_child(row)
+	catalog_container.add_child(row)
 	KenneyUI.apply_heading(name_label, 16)
+	KenneyUI.apply_body_label(price_label, 15)
+	KenneyUI.apply_secondary_button(action_button)
+
+
+func _add_weapon_row(weapon: Dictionary) -> void:
+	var weapon_id := String(weapon.get("id", "")).strip_edges()
+	var weapon_name := String(weapon.get("name", "Weapon"))
+	var price := maxi(int(weapon.get("price", 0)), 0)
+	var owned := SettingsManager.is_weapon_owned(weapon_id)
+	var equipped := SettingsManager.get_equipped_weapon() == weapon_id
+
+	var row := HBoxContainer.new()
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 14)
+
+	var preview := TextureRect.new()
+	preview.custom_minimum_size = PREVIEW_SIZE
+	preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	preview.texture = _load_preview_texture(String(weapon.get("preview", "")))
+	row.add_child(preview)
+
+	var text_box := VBoxContainer.new()
+	text_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(text_box)
+
+	var name_label := Label.new()
+	name_label.text = weapon_name
+	text_box.add_child(name_label)
+
+	var description_label := Label.new()
+	description_label.text = String(weapon.get("description", ""))
+	description_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	text_box.add_child(description_label)
+
+	var price_label := Label.new()
+	price_label.custom_minimum_size = Vector2(120.0, 0.0)
+	price_label.text = "Owned" if owned else "%d coins" % price
+	row.add_child(price_label)
+
+	var action_button := Button.new()
+	action_button.custom_minimum_size = Vector2(150.0, 42.0)
+	if equipped:
+		action_button.text = "Equipped"
+		action_button.disabled = true
+	elif owned:
+		action_button.text = "Equip"
+		action_button.pressed.connect(_on_weapon_equip_pressed.bind(weapon_id))
+	else:
+		action_button.text = "Buy"
+		action_button.disabled = SettingsManager.get_coin_balance() < price
+		action_button.pressed.connect(_on_weapon_buy_pressed.bind(weapon_id, price))
+	row.add_child(action_button)
+
+	catalog_container.add_child(row)
+	KenneyUI.apply_heading(name_label, 16)
+	KenneyUI.apply_body_label(description_label, 14)
 	KenneyUI.apply_body_label(price_label, 15)
 	KenneyUI.apply_secondary_button(action_button)
 
@@ -127,6 +197,23 @@ func _on_equip_pressed(skin_id: String) -> void:
 		status_label.text = "Skin equipped."
 	else:
 		status_label.text = "Buy this skin first."
+	refresh()
+
+
+func _on_weapon_buy_pressed(weapon_id: String, price: int) -> void:
+	var result := SettingsManager.buy_weapon(weapon_id, price)
+	if bool(result.get("ok", false)):
+		status_label.text = "Weapon bought and equipped."
+	else:
+		status_label.text = "Not enough coins."
+	refresh()
+
+
+func _on_weapon_equip_pressed(weapon_id: String) -> void:
+	if SettingsManager.equip_weapon(weapon_id):
+		status_label.text = "Weapon equipped."
+	else:
+		status_label.text = "Buy this weapon first."
 	refresh()
 
 

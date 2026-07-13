@@ -3,6 +3,7 @@
 [ext_resource type="PackedScene" uid="uid://pbmyh1qru7p" path="res://characters/happy_boo/happy_boo.tscn" id="1_4flbx"]
 [ext_resource type="Script" uid="uid://yh2ao5or56lq" path="res://player.gd" id="1_onrkg"]
 [ext_resource type="PackedScene" path="res://pistol/gun.tscn" id="3_4ghd5"]
+[ext_resource type="Texture2D" path="res://powerups/assets/sports_race.png" id="4_car"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_onrkg"]
 radius = 50.01
@@ -30,6 +31,11 @@ script = ExtResource("1_onrkg")
 [node name="HappyBoo" parent="." unique_id=1091727253 instance=ExtResource("1_4flbx")]
 unique_name_in_owner = true
 scale = Vector2(0.92, 0.92)
+
+[node name="CarSprite" type="Sprite2D" parent="."]
+visible = false
+scale = Vector2(4, 4)
+texture = ExtResource("4_car")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=579793531]
 position = Vector2(-3, -58)

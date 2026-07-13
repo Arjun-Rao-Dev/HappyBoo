@@ -4,6 +4,51 @@ const SETTINGS_PATH := "user://settings.json"
 const SETTINGS_VERSION := 1
 const USERNAME_REGEX := "^[A-Za-z0-9_]{3,16}$"
 const DEFAULT_SKIN_ID := "classic"
+const DEFAULT_WEAPON_ID := "pistol"
+const WEAPON_CATALOG: Array[Dictionary] = [
+	{
+		"id": "pistol",
+		"name": "Pistol",
+		"price": 0,
+		"preview": "res://pistol/pistol.png",
+		"description": "Balanced starter blaster.",
+		"fire_interval": 0.5,
+		"damage": 1.0,
+		"projectile_speed": 1200.0,
+		"projectile_scale": 1.0,
+		"shot_count": 1,
+		"spread_degrees": 0.0,
+		"projectile_color": Color.WHITE
+	},
+	{
+		"id": "raygun",
+		"name": "Raygun",
+		"price": 75,
+		"preview": "res://weapons/assets/raygun.png",
+		"description": "Fires faster than the pistol.",
+		"fire_interval": 0.34,
+		"damage": 1.0,
+		"projectile_speed": 1350.0,
+		"projectile_scale": 1.05,
+		"shot_count": 1,
+		"spread_degrees": 0.0,
+		"projectile_color": Color(0.3, 0.85, 1.0, 1.0)
+	},
+	{
+		"id": "heavy_raygun",
+		"name": "Heavy Raygun",
+		"price": 150,
+		"preview": "res://weapons/assets/raygun_big.png",
+		"description": "Slower shots with heavier damage.",
+		"fire_interval": 0.68,
+		"damage": 2.0,
+		"projectile_speed": 1100.0,
+		"projectile_scale": 1.25,
+		"shot_count": 1,
+		"spread_degrees": 0.0,
+		"projectile_color": Color(0.75, 0.45, 1.0, 1.0)
+	}
+]
 const MODIFIER_CATALOG: Array[Dictionary] = [
 	{
 		"id": "disable_bombs",
@@ -166,6 +211,20 @@ func get_modifier_catalog() -> Array[Dictionary]:
 	return MODIFIER_CATALOG.duplicate(true)
 
 
+func get_weapon_catalog() -> Array[Dictionary]:
+	return WEAPON_CATALOG.duplicate(true)
+
+
+func get_weapon_data(weapon_id: String = "") -> Dictionary:
+	var normalized := weapon_id.strip_edges()
+	if normalized.is_empty():
+		normalized = get_equipped_weapon()
+	for weapon in WEAPON_CATALOG:
+		if String(weapon.get("id", "")) == normalized:
+			return weapon.duplicate(true)
+	return WEAPON_CATALOG[0].duplicate(true)
+
+
 func get_modifier_name(modifier_id: String) -> String:
 	for modifier in MODIFIER_CATALOG:
 		if String(modifier.get("id", "")) == modifier_id:
@@ -321,6 +380,69 @@ func equip_skin(skin_id: String) -> bool:
 	return save_settings(snapshot)
 
 
+func get_owned_weapons() -> Array[String]:
+	var profile: Dictionary = _settings_cache.get("profile", {})
+	var raw_weapons: Variant = profile.get("owned_weapons", [DEFAULT_WEAPON_ID])
+	var owned: Array[String] = []
+	if raw_weapons is Array:
+		for weapon in raw_weapons:
+			var weapon_id := String(weapon).strip_edges()
+			if weapon_id.is_empty() or owned.has(weapon_id):
+				continue
+			owned.append(weapon_id)
+	if not owned.has(DEFAULT_WEAPON_ID):
+		owned.append(DEFAULT_WEAPON_ID)
+	return owned
+
+
+func is_weapon_owned(weapon_id: String) -> bool:
+	return get_owned_weapons().has(weapon_id)
+
+
+func get_equipped_weapon() -> String:
+	var profile: Dictionary = _settings_cache.get("profile", {})
+	var weapon_id := String(profile.get("equipped_weapon", DEFAULT_WEAPON_ID)).strip_edges()
+	if weapon_id.is_empty() or not is_weapon_owned(weapon_id):
+		return DEFAULT_WEAPON_ID
+	return weapon_id
+
+
+func buy_weapon(weapon_id: String, cost: int) -> Dictionary:
+	var normalized := weapon_id.strip_edges()
+	if normalized.is_empty():
+		return {"ok": false, "status": "invalid_weapon"}
+	if is_weapon_owned(normalized):
+		return {"ok": true, "status": "already_owned"}
+	var price := maxi(cost, 0)
+	if get_coin_balance() < price:
+		return {"ok": false, "status": "not_enough_coins"}
+
+	var snapshot := get_settings_snapshot()
+	var profile: Dictionary = snapshot.get("profile", {})
+	profile["coins"] = maxi(int(profile.get("coins", 0)), 0) - price
+	var owned := get_owned_weapons()
+	owned.append(normalized)
+	profile["owned_weapons"] = owned
+	profile["equipped_weapon"] = normalized
+	snapshot["profile"] = profile
+	apply_settings(snapshot)
+	if not save_settings(snapshot):
+		return {"ok": false, "status": "save_failed"}
+	return {"ok": true, "status": "bought"}
+
+
+func equip_weapon(weapon_id: String) -> bool:
+	var normalized := weapon_id.strip_edges()
+	if not is_weapon_owned(normalized):
+		return false
+	var snapshot := get_settings_snapshot()
+	var profile: Dictionary = snapshot.get("profile", {})
+	profile["equipped_weapon"] = normalized
+	snapshot["profile"] = profile
+	apply_settings(snapshot)
+	return save_settings(snapshot)
+
+
 func mark_tutorial_completed(completed: bool = true) -> bool:
 	var snapshot := get_settings_snapshot()
 	var profile: Dictionary = snapshot.get("profile", {})
@@ -395,6 +517,8 @@ func _default_settings() -> Dictionary:
 			"coins": 0,
 			"owned_skins": [DEFAULT_SKIN_ID],
 			"equipped_skin": DEFAULT_SKIN_ID,
+			"owned_weapons": [DEFAULT_WEAPON_ID],
+			"equipped_weapon": DEFAULT_WEAPON_ID,
 			"tutorial_completed": false
 		},
 		"controls": _default_bindings.duplicate(true)
@@ -455,6 +579,8 @@ func _extract_profile_snapshot() -> Dictionary:
 		"coins": get_coin_balance(),
 		"owned_skins": get_owned_skins(),
 		"equipped_skin": get_equipped_skin(),
+		"owned_weapons": get_owned_weapons(),
+		"equipped_weapon": get_equipped_weapon(),
 		"tutorial_completed": is_tutorial_completed()
 	}
 

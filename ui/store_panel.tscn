@@ -30,15 +30,20 @@ layout_mode = 2
 [node name="Title" type="Label" parent="Margin/VBox/HeaderRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Skin Store"
+text = "Store"
 
 [node name="CoinsLabel" type="Label" parent="Margin/VBox/HeaderRow" unique_name_in_owner=true]
 layout_mode = 2
 text = "Coins: 0"
 
-[node name="SkinsContainer" type="VBoxContainer" parent="Margin/VBox" unique_name_in_owner=true]
+[node name="Scroll" type="ScrollContainer" parent="Margin/VBox"]
+custom_minimum_size = Vector2(0, 420)
 layout_mode = 2
 size_flags_vertical = 3
+
+[node name="CatalogContainer" type="VBoxContainer" parent="Margin/VBox/Scroll" unique_name_in_owner=true]
+layout_mode = 2
+size_flags_horizontal = 3
 theme_override_constants/separation = 10
 
 [node name="StatusLabel" type="Label" parent="Margin/VBox" unique_name_in_owner=true]
