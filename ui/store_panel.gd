@@ -2,6 +2,7 @@ extends PanelContainer
 
 const KenneyUI = preload("res://ui/kenney_ui.gd")
 const PREVIEW_SIZE := Vector2(70.0, 70.0)
+const WEAPON_PREVIEW_SIZE := Vector2(112.0, 112.0)
 const STORE_URL := "https://store.arjunrao.dev"
 const SKIN_CATALOG: Array[Dictionary] = [
 	{"id": "classic", "name": "Classic Boo", "price": 0, "preview": "res://characters/happy_boo/square_ref.png"},
@@ -132,7 +133,7 @@ func _add_weapon_row(weapon: Dictionary) -> void:
 	row.add_theme_constant_override("separation", 14)
 
 	var preview := TextureRect.new()
-	preview.custom_minimum_size = PREVIEW_SIZE
+	preview.custom_minimum_size = WEAPON_PREVIEW_SIZE
 	preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	preview.texture = _load_preview_texture(String(weapon.get("preview", "")))
